@@ -14,6 +14,7 @@ import { RoutineTab } from './routineTab.jsx';
 import { CalmRoomPanel } from './moodTab.jsx';
 import { DashboardScenarioRow } from './liveSessionView.jsx';
 import { openLiveSession } from './liveSessionSignal.js';
+import { SandboxedDashboardPanel, buildDashboardBridgeSnapshot } from './dashboardPanelSandbox.jsx';
 
 // ============================================================================
 // Redesign of the Dashboard (Session tools' home screen) against the design handoff
@@ -948,12 +949,74 @@ function NoBackendPanel({ t, cta }) {
   );
 }
 
-// A custom board entry has no CAT slug - resolveCustomEntry() turns its stored {title,desc} into
-// the same {title,icon,span,desc} shape a CAT lookup returns, so entryOf()/panelBody()/panelMeta()
-// never need to know whether an id is a fixed panel type or one the AI panel builder drafted.
+// A custom board entry has no CAT slug - resolveCustomEntry() turns its stored record into the
+// same {title,icon,span,desc} shape a CAT lookup returns, so entryOf()/panelBody()/panelMeta()
+// never need to know whether an id is a fixed panel type, a legacy free-form prose note, or a
+// Vibe Coding Panel Studio artifact.
+//
+// Two entry shapes coexist in the same `custom` map, additively:
+//   {title, desc}                                     - legacy prose-draft panel (unchanged, never migrated)
+//   {title, kind:'artifact', artifactId, revisionId}   - a Panel Studio panel applied to this board
 export function resolveCustomEntry(id, customMap) {
   const entry = customMap && customMap[id];
-  return entry ? { title: entry.title, icon: 'sparkle', span: 4, desc: entry.desc } : null;
+  if (!entry) return null;
+  if (entry.kind === 'artifact') {
+    return { title: entry.title, icon: 'sparkle', span: 4, desc: '', kind: 'artifact', artifactId: entry.artifactId, revisionId: entry.revisionId };
+  }
+  return { title: entry.title, icon: 'sparkle', span: 4, desc: entry.desc };
+}
+
+// Applies a Panel Studio revision to this character's board - the ONLY action that changes what
+// is actually live on the dashboard (generation/preview alone never do). Re-applying a newer
+// revision of an artifact already on the board reuses the same board slot id (updates its
+// revisionId in place) instead of adding a duplicate panel. The board entry stays small
+// ({title, kind, artifactId, revisionId}, no source) - the real source lives server-side in the
+// Panel Studio artifact/revision domain (server/community/routes.panel-studio.mjs), never
+// inlined into this preference-backed board object.
+export function addArtifactPanel(character, artifactId, title, revisionId) {
+  const state = loadBoard(character);
+  const existingId = Object.keys(state.custom || {}).find((k) => state.custom[k].kind === 'artifact' && state.custom[k].artifactId === artifactId);
+  const id = existingId || ('custom-' + Date.now().toString(36) + '-' + Math.random().toString(36).slice(2, 7));
+  const next = {
+    ...state,
+    board: state.board.indexOf(id) > -1 ? state.board : state.board.concat([id]),
+    custom: { ...state.custom, [id]: { title: String(title || '').slice(0, 60), kind: 'artifact', artifactId, revisionId } }
+  };
+  saveBoard(character, next);
+  return id;
+}
+
+// Renders an applied Panel Studio panel: fetches the artifact's revisions once per
+// [artifactId, revisionId] (the applied revision's own id is an immutable version key, so there
+// is nothing to re-fetch on unless a newer revision is applied), finds the one this board slot
+// names, and renders it through the same sandbox runtime the Studio's own preview uses -
+// never a second, weaker rendering path. `character` feeds a fresh, synchronous, read-only
+// snapshot (navrya-src/dashboardPanelSandbox.jsx's own buildDashboardBridgeSnapshot) into a ref,
+// exactly like the Studio's own preview column.
+function ArtifactPanelSlot({ entry, character }) {
+  const [record, setRecord] = React.useState(null);
+  const [missing, setMissing] = React.useState(false);
+  React.useEffect(() => {
+    let cancelled = false;
+    setRecord(null);
+    setMissing(false);
+    fetch('/api/sync/panel-studio/artifacts/' + entry.artifactId, { credentials: 'same-origin' })
+      .then((r) => (r.ok ? r.json() : null))
+      .then((body) => {
+        if (cancelled) return;
+        const revision = body && (body.revisions || []).find((rv) => rv.id === entry.revisionId);
+        if (revision) setRecord(revision); else setMissing(true);
+      })
+      .catch(() => { if (!cancelled) setMissing(true); });
+    return () => { cancelled = true; };
+  }, [entry.artifactId, entry.revisionId]);
+
+  const snapshotRef = React.useRef(null);
+  if (snapshotRef.current === null) snapshotRef.current = buildDashboardBridgeSnapshot(character);
+
+  if (missing) return <p style={{ margin: 0, font: 'var(--type-body)', color: 'var(--text-dim)' }}>—</p>;
+  if (!record) return <p style={{ margin: 0, font: 'var(--type-body)', color: 'var(--text-muted)' }}>…</p>;
+  return <SandboxedDashboardPanel source={record.source} snapshotRef={snapshotRef} title={entry.title} pulse={0} />;
 }
 
 function panelBody(id, ctx) {
@@ -976,10 +1039,14 @@ function panelBody(id, ctx) {
     case 'calmRoom': return <CalmRoomPanel i18n={window.TradeJournalTradeI18n} />;
     case 'scenarios': return <ScenariosPanel t={t} lang={lang} character={character} />;
     default: {
-      // Custom (AI-drafted) panel: a plain note, exactly what it was drafted as - no invented
-      // data binding, since a free-form prompt has no real store backing it.
       const entry = custom && custom[id];
       if (!entry) return null;
+      // Vibe Coding Panel Studio panel: real generated/edited source, rendered through the same
+      // sandbox the Studio's own preview uses.
+      if (entry.kind === 'artifact') return <ArtifactPanelSlot entry={entry} character={character} />;
+      // Legacy custom (AI-drafted) panel: a plain note, exactly what it was drafted as - no
+      // invented data binding, since a free-form prompt has no real store backing it. Unchanged,
+      // never auto-converted to the artifact shape above.
       return <p style={{ margin: 0, font: 'var(--type-body)', color: 'var(--text-muted)' }}>{entry.desc}</p>;
     }
   }

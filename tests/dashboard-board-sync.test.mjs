@@ -40,7 +40,7 @@ test('aiAssistantView.jsx\'s Panel Builder tab ("Manage panels" card) still impo
   // together to the AI Assistant page's own Panel Builder tab. settingsView.jsx no longer
   // imports from dashboardView.jsx at all.
   const text = await source('aiAssistantView.jsx');
-  assert.match(text, /import \{ SPANS, loadBoard, saveBoard, catalogForLang, resolveCustomEntry, addCustomPanel \} from '\.\/dashboardView\.jsx';/);
+  assert.match(text, /import \{ SPANS, loadBoard, saveBoard, catalogForLang, resolveCustomEntry, addCustomPanel, addArtifactPanel \} from '\.\/dashboardView\.jsx';/);
   assert.doesNotMatch(text, /localStorage\s*\.\s*\w+\s*\(/, 'aiAssistantView.jsx must never read/write the board directly - only through the shared functions');
 
   const settingsText = await source('settingsView.jsx');

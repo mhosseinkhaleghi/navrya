@@ -7,6 +7,7 @@ import { TextField } from '../public/pages/shared/navrya/components/forms/TextFi
 import { Button } from '../public/pages/shared/navrya/components/forms/Button.jsx';
 import { Chip } from '../public/pages/shared/navrya/components/forms/Chip.jsx';
 import { Notice } from '../public/pages/shared/navrya/components/feedback/Notice.jsx';
+import { Modal } from '../public/pages/shared/navrya/components/feedback/Modal.jsx';
 import { MetricTile } from '../public/pages/shared/navrya/components/metrics/MetricTile.jsx';
 import { Toggle } from '../public/pages/shared/navrya/components/forms/Toggle.jsx';
 import { ModelGlyph } from '../public/pages/shared/navrya/components/assistant/ModelSwitcher.jsx';
@@ -15,7 +16,14 @@ import { currentNavryaCharacter } from './currentCharacter.js';
 // Panel Builder moved here from Settings (it's an AI capability, not a setting) - reuses the
 // exact same real board record/APIs Settings' own ManagePanelsSection and the real Dashboard
 // already read/write, never a second board representation.
-import { SPANS, loadBoard, saveBoard, catalogForLang, resolveCustomEntry, addCustomPanel } from './dashboardView.jsx';
+import { SPANS, loadBoard, saveBoard, catalogForLang, resolveCustomEntry, addCustomPanel, addArtifactPanel } from './dashboardView.jsx';
+// Vibe Coding Panel Studio - real AI code generation for dashboard panels, replacing the old
+// prose-draft-only PanelBuilderTab below. resolveCodingEngine/SUPPORTED_PROVIDERS is the same
+// deterministic mapping server/pattern-ai-server.mjs uses for the SSE `engine` event, so the
+// client-shown "Codex"/"Claude Code" chip can never drift from what the server actually reports.
+import { resolveCodingEngine, isSupportedProvider, SUPPORTED_PROVIDERS } from './codingEngine.js';
+import { MAX_PROMPT_CHARS as PANEL_STUDIO_MAX_PROMPT_CHARS } from './dashboardPanelBuilder.js';
+import { SandboxedDashboardPanel, buildDashboardBridgeSnapshot } from './dashboardPanelSandbox.jsx';
 
 function fmtUsd(microUsd) { return '$' + ((Number(microUsd) || 0) / 1000000).toFixed(4); }
 
@@ -938,14 +946,6 @@ function ManagePanelsCard({ i18n, character }) {
   );
 }
 
-// A draft's visual preview: no real chart data exists yet for a free-text AI description, so a
-// deterministic hash of the draft id picks plausible bar heights - a real thumbnail structure
-// (matching the design), never fabricated numeric content.
-function draftBarHeights(id) {
-  let seed = 0;
-  for (let i = 0; i < id.length; i++) seed = (seed * 31 + id.charCodeAt(i)) % 97;
-  return [0, 1, 2, 3, 4, 5].map((i) => 28 + ((seed * (i + 3)) % 60));
-}
 
 // Voice Command Learning Profile addendum, section 10. Kept as its OWN top-level tab, visually
 // separate from PersonaTab (communication/tone preferences) - a learned command is a command/
@@ -1082,13 +1082,168 @@ function LearnedCommandsTab({ i18n }) {
   );
 }
 
-function PanelBuilderTab({ i18n, character }) {
+// ============================================================================
+// Vibe Coding Panel Studio - real AI code generation for dashboard panels. Replaces the old
+// prose-draft-only PanelBuilderTab (a hardcoded chat prompt producing 1-2 sentences + a fake
+// hash-based thumbnail - see git history). "Codex"/"Claude Code" are UX coding-profile identities
+// over the real existing OpenAI/Anthropic calls this repo already makes - never a real external
+// agent process, never an invented model id (codingEngine.js). Only `dashboard.panel` is enabled
+// in v1 (navrya-src/panelStudioTargets.js). Server-side authority: entitlement
+// (server/commercial/wallet-service.mjs's reserveForAiCall), source validation and persistence
+// timing (server/pattern-ai-server.mjs's panelBuilderGenerate) - every client-side gate/limit here
+// is UX only.
+// ============================================================================
+
+function codingEngineChip(engine) {
+  if (!engine) return null;
+  return <Chip tone="accent" dot><Icon name="sparkle" size={12} />{engine.codingEngineLabel}</Chip>;
+}
+
+// Monospace source display, forced LTR regardless of page direction (the generation prompt, the
+// generated code, and every id/timestamp in this tab follow the same repo-wide numeric/code
+// convention already used for tabular numbers elsewhere - see ARCHITECTURE.md's i18n section).
+// Read-only mode shows real line numbers; edit mode is a plain textarea (this tab's only
+// multiline input surface, matching PanelBuilderModal's own precedent - TextField has no
+// multiline variant in this component library).
+function CodePane({ source, editable, onChange, placeholder }) {
+  const monoFont = "13px/1.6 ui-monospace, SFMono-Regular, Menlo, Consolas, 'Courier New', monospace";
+  if (editable) {
+    return (
+      <textarea
+        dir="ltr" spellCheck={false} value={source} onChange={(e) => onChange(e.target.value)}
+        style={{ width: '100%', minHeight: 320, maxHeight: 480, boxSizing: 'border-box', resize: 'vertical', padding: 14, border: 0, background: 'rgba(3,8,7,.6)', color: 'var(--text-primary)', font: monoFont, outline: 'none' }}
+      />
+    );
+  }
+  const lines = source ? source.split('\n') : [];
+  return (
+    <div dir="ltr" className="navrya-scroll" style={{ display: 'flex', minHeight: 160, maxHeight: 480, overflow: 'auto', background: 'rgba(3,8,7,.6)' }}>
+      {!!lines.length && (
+        <div style={{ flex: 'none', padding: '14px 10px', textAlign: 'end', color: 'var(--text-dim)', font: monoFont, userSelect: 'none', borderInlineEnd: '1px solid var(--border-hairline)' }}>
+          {lines.map((_, i) => <div key={i}>{i + 1}</div>)}
+        </div>
+      )}
+      <pre style={{ flex: 1, minWidth: 0, margin: 0, padding: '14px 16px', color: lines.length ? 'var(--text-primary)' : 'var(--text-muted)', font: monoFont, whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>
+        {source || placeholder}
+      </pre>
+    </div>
+  );
+}
+
+const PANEL_STUDIO_STATUS_TONE = { draft: 'neutral', ready: 'accent', applied: 'success', archived: 'neutral' };
+
+function panelStudioErrorMessage(i18n, code, message) {
+  if (code === 'GENERATION_UNAVAILABLE' && message) return message;
+  const key = {
+    PANEL_STUDIO_PROVIDER_UNSUPPORTED: 'panelStudioErrorProviderUnsupported',
+    PANEL_STUDIO_PROMPT_REQUIRED: 'panelStudioErrorPromptRequired',
+    PROVIDER_ERROR: 'panelStudioErrorProvider',
+    GENERATION_UNAVAILABLE: 'panelStudioErrorUnavailable',
+    GENERATION_EMPTY: 'panelStudioErrorEmpty',
+    GENERATION_TOO_LARGE: 'panelStudioErrorTooLarge',
+    PERSIST_FAILED: 'panelStudioErrorPersistFailed',
+    FEATURE_NOT_ENTITLED: 'panelStudioNotEntitled',
+    WALLET_INSUFFICIENT_BALANCE: 'panelStudioErrorWallet',
+    PROVIDER_PRICING_NOT_CONFIGURED: 'panelStudioErrorProvider',
+    AUTH_SESSION_REQUIRED: 'panelStudioErrorGeneric'
+  }[code];
+  return i18n.t(key || 'panelStudioErrorGeneric');
+}
+
+// Parses one fetch Response's SSE body exactly like the real browser client must (POST + a JSON
+// body rules out EventSource) - the same frame-splitting algorithm
+// server/pattern-ai-server.mjs's own forEachSseEvent() and the SSE test's collectSseEvents() use,
+// so all three stay behaviorally identical.
+async function readPanelStudioSse(response, onEvent) {
+  const reader = response.body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = '';
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) return;
+    buffer += decoder.decode(value, { stream: true });
+    let boundary;
+    while ((boundary = buffer.indexOf('\n\n')) > -1) {
+      const rawFrame = buffer.slice(0, boundary);
+      buffer = buffer.slice(boundary + 2);
+      let eventName = 'message';
+      const dataLines = [];
+      rawFrame.split('\n').forEach((line) => {
+        if (line.startsWith('event:')) eventName = line.slice(6).trim();
+        else if (line.startsWith('data:')) dataLines.push(line.slice(5).trim());
+      });
+      if (!dataLines.length) continue;
+      let data = {};
+      try { data = JSON.parse(dataLines.join('\n')); } catch (_) { data = {}; }
+      onEvent(eventName, data);
+    }
+  }
+}
+
+function PanelBuilderTab({ i18n, character, entitled }) {
+  const lang = i18n.language();
+  const settingsStore = window.TradeJournalAISettingsStore;
+  const providerCatalog = React.useMemo(
+    () => (settingsStore ? settingsStore.providerCatalog().filter((p) => isSupportedProvider(p.id)) : []),
+    [settingsStore]
+  );
+
+  // ---- created-panels list (column 1) ----
+  const [artifacts, setArtifacts] = React.useState(null);
+  const [selectedId, setSelectedId] = React.useState(null);
+  const [detail, setDetail] = React.useState(null); // { artifact, revisions }
+  const [confirmArchiveId, setConfirmArchiveId] = React.useState(null);
+  const [listFilter, setListFilter] = React.useState('');
+
+  function refreshList() {
+    fetch('/api/sync/panel-studio/artifacts').then((r) => (r.ok ? r.json() : [])).then((rows) => setArtifacts(Array.isArray(rows) ? rows : [])).catch(() => setArtifacts([]));
+  }
+  React.useEffect(() => { if (entitled) refreshList(); }, [entitled]);
+
+  function loadDetail(id) {
+    setSelectedId(id);
+    setDetail(null);
+    setSelectedRevisionId(null);
+    setEditMode(false);
+    setPrompt('');
+    fetch('/api/sync/panel-studio/artifacts/' + id).then((r) => (r.ok ? r.json() : null)).then((body) => setDetail(body)).catch(() => setDetail(null));
+  }
+
+  function newPanel() {
+    setSelectedId(null); setDetail(null); setSelectedRevisionId(null); setEditMode(false);
+    setPrompt(''); setStage('idle'); setStreamText(''); setStreamErrorMsg(''); setEngineInfo(null);
+  }
+
+  async function archiveArtifact(id) {
+    await fetch('/api/sync/panel-studio/artifacts/' + id + '/archive', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' });
+    setConfirmArchiveId(null);
+    refreshList();
+    if (selectedId === id) newPanel();
+  }
+  async function unarchiveArtifact(id) {
+    await fetch('/api/sync/panel-studio/artifacts/' + id + '/unarchive', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' });
+    refreshList();
+    if (selectedId === id) loadDetail(id);
+  }
+
+  // ---- composer / coding-engine (column 2) ----
+  const [provider, setProvider] = React.useState(() => {
+    const active = settingsStore ? settingsStore.activeProvider() : null;
+    return isSupportedProvider(active) ? active : (SUPPORTED_PROVIDERS[0] || 'openai');
+  });
+  const providerEntry = providerCatalog.find((p) => p.id === provider);
+  const [model, setModel] = React.useState(() => {
+    const active = settingsStore ? settingsStore.activeProvider() : null;
+    if (active === provider && settingsStore) return settingsStore.activeModel();
+    return providerEntry && providerEntry.models[0];
+  });
+  React.useEffect(() => {
+    if (providerEntry && providerEntry.models.indexOf(model) === -1) setModel(providerEntry.models[0]);
+  }, [provider]); // eslint-disable-line react-hooks/exhaustive-deps
+  const engine = resolveCodingEngine(provider);
+
   const [prompt, setPrompt] = React.useState('');
-  const [drafts, setDrafts] = React.useState([]);
-  const [busy, setBusy] = React.useState(false);
-  const [error, setError] = React.useState('');
-  const aiSettings = window.TradeJournalAISettingsStore;
-  const configured = aiSettings ? !!aiSettings.getKey(aiSettings.activeProvider()) : false;
+  const [subTab, setSubTab] = React.useState('code'); // 'request' | 'code' | 'diff'
 
   const mountedRef = React.useRef(true);
   React.useEffect(() => {
@@ -1103,107 +1258,332 @@ function PanelBuilderTab({ i18n, character }) {
     return () => { mountedRef.current = false; };
   }, []);
 
+  // ---- generation stream ----
+  const [stage, setStage] = React.useState('idle'); // idle|starting|streaming|validating|error|complete
+  const [streamText, setStreamText] = React.useState('');
+  const [engineInfo, setEngineInfo] = React.useState(null);
+  const [streamErrorMsg, setStreamErrorMsg] = React.useState('');
+  const abortRef = React.useRef(null);
+
+  // ---- manual edit ----
+  const [editMode, setEditMode] = React.useState(false);
+  const [editedSource, setEditedSource] = React.useState('');
+  const [previewingEdit, setPreviewingEdit] = React.useState(false);
+  const [saveConflict, setSaveConflict] = React.useState(false);
+
+  // ---- revision inspector (column 3) ----
+  const [selectedRevisionId, setSelectedRevisionId] = React.useState(null);
+  const [compareRevisionId, setCompareRevisionId] = React.useState(null);
+  const [applying, setApplying] = React.useState(false);
+
+  const revisions = (detail && detail.revisions) || [];
+  const currentRevision = detail ? revisions.find((r) => r.id === detail.artifact.currentRevisionId) : null;
+  const viewedRevision = selectedRevisionId ? revisions.find((r) => r.id === selectedRevisionId) : currentRevision;
+  const isStreaming = stage === 'starting' || stage === 'streaming' || stage === 'validating';
+  const displaySource = isStreaming ? streamText : (editMode ? editedSource : ((viewedRevision && viewedRevision.source) || ''));
+
   async function generate() {
     const text = prompt.trim();
-    if (!text || busy) return;
-    setError('');
-    if (!window.TradeJournalChatDockCore || !configured) { setError(i18n.t('aiNotConfigured')); return; }
-    setBusy(true);
+    if (!text || isStreaming) return;
+    setStage('starting'); setStreamText(''); setStreamErrorMsg(''); setEngineInfo(null); setSubTab('code');
+    const controller = new AbortController();
+    abortRef.current = controller;
     try {
-      const result = await window.TradeJournalChatDockCore.sendChat({
-        text: 'Draft one dashboard panel idea for a trading journal app from this request, in ' + i18n.language() + '. Reply with 1-2 plain sentences describing what the panel would show - no markdown, no preamble. Request: ' + text
+      const response = await fetch('/api/ai/panel-builder/generate', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          target: 'dashboard.panel', prompt: text, provider, model, language: lang,
+          artifactId: detail ? detail.artifact.id : undefined,
+          baseRevisionId: detail ? detail.artifact.currentRevisionId : undefined
+        }),
+        signal: controller.signal
       });
-      const desc = result && result.reply ? result.reply.trim() : i18n.t('draftedNote');
-      setDrafts((list) => list.concat([{ id: 'draft-' + Date.now(), title: text.slice(0, 42), desc }]));
-      setPrompt('');
+      if (!response.ok) {
+        const body = await response.json().catch(() => ({}));
+        setStage('error'); setStreamErrorMsg(panelStudioErrorMessage(i18n, body.error, ''));
+        return;
+      }
+      setStage('streaming');
+      await readPanelStudioSse(response, (eventName, data) => {
+        if (eventName === 'engine') setEngineInfo(data);
+        else if (eventName === 'delta') setStreamText((t) => t + (data.text || ''));
+        else if (eventName === 'validating') setStage('validating');
+        else if (eventName === 'complete') {
+          setStage('complete');
+          setPrompt('');
+          refreshList();
+          loadDetail(data.artifact.id);
+          setSelectedRevisionId(data.revision.id);
+        } else if (eventName === 'error') {
+          setStage('error');
+          setStreamErrorMsg(panelStudioErrorMessage(i18n, data.code, data.message));
+        }
+      });
     } catch (_) {
-      setError(i18n.t('aiBuilderErrorGeneric'));
+      if (controller.signal.aborted) { setStage('idle'); return; }
+      setStage('error'); setStreamErrorMsg(i18n.t('panelStudioErrorGeneric'));
+    }
+  }
+  function cancelGenerate() { if (abortRef.current) abortRef.current.abort(); }
+
+  function startEdit() {
+    setEditedSource((viewedRevision && viewedRevision.source) || '');
+    setEditMode(true); setPreviewingEdit(false); setSaveConflict(false); setSubTab('code');
+  }
+  function cancelEdit() { setEditMode(false); setPreviewingEdit(false); setSaveConflict(false); }
+
+  async function saveEdit() {
+    if (!detail) return;
+    setSaveConflict(false);
+    const response = await fetch('/api/sync/panel-studio/artifacts/' + detail.artifact.id + '/revisions', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ source: editedSource, sourceKind: 'manual-edit', baseRevisionId: detail.artifact.currentRevisionId })
+    });
+    if (response.status === 409) { setSaveConflict(true); return; }
+    if (!response.ok) return;
+    const body = await response.json();
+    setEditMode(false); setPreviewingEdit(false);
+    loadDetail(detail.artifact.id);
+    setSelectedRevisionId(body.revision.id);
+    refreshList();
+  }
+
+  async function restoreRevision(revisionId) {
+    if (!detail) return;
+    const response = await fetch('/api/sync/panel-studio/artifacts/' + detail.artifact.id + '/revisions', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ sourceKind: 'restore', restoredFromRevisionId: revisionId, baseRevisionId: detail.artifact.currentRevisionId })
+    });
+    if (!response.ok) return;
+    const body = await response.json();
+    loadDetail(detail.artifact.id);
+    setSelectedRevisionId(body.revision.id);
+    refreshList();
+  }
+
+  async function applyToDashboard() {
+    if (!detail || !viewedRevision) return;
+    setApplying(true);
+    try {
+      await fetch('/api/sync/panel-studio/artifacts/' + detail.artifact.id + '/apply', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ revisionId: viewedRevision.id })
+      });
+      addArtifactPanel(character, detail.artifact.id, detail.artifact.title, viewedRevision.id);
+      loadDetail(detail.artifact.id);
+      refreshList();
     } finally {
-      setBusy(false);
+      setApplying(false);
     }
   }
 
-  const quickPrompts = ['quickPromptRevenge', 'quickPromptRiskUsed', 'quickPromptEmotionHeatmap', 'quickPromptMissedPatterns'].map((k) => i18n.t(k));
+  const snapshotRef = React.useRef(null);
+  if (snapshotRef.current === null) snapshotRef.current = buildDashboardBridgeSnapshot(character);
+
+  if (!entitled) {
+    return (
+      <Notice tone="accent" icon="sparkle">
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+          <strong style={{ color: 'var(--text-primary)' }}>{i18n.t('panelStudioNotEntitledTitle')}</strong>
+          <span>{i18n.t('panelStudioNotEntitledBody')}</span>
+          <Button variant="secondary" size="sm" style={{ alignSelf: 'flex-start' }} onClick={() => { location.hash = '#account/profile/subscriptions'; }}>{i18n.t('panelStudioUpgrade')}</Button>
+        </div>
+      </Notice>
+    );
+  }
+
+  const filteredArtifacts = (artifacts || []).filter((a) => !listFilter.trim() || a.title.toLowerCase().includes(listFilter.trim().toLowerCase()));
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
-      <div style={{ display: 'flex', alignItems: 'center', gap: 11, padding: '12px 15px', borderRadius: 10, border: '1px solid color-mix(in srgb, var(--char-accent) 40%, transparent)', background: 'var(--char-active-surface)' }}>
-        <Icon name="layout-template" style={{ color: 'var(--char-accent)', flex: 'none' }} />
-        <span style={{ flex: 1, font: 'var(--type-body)', color: 'var(--text-primary)' }}>{i18n.t('aiPanelMovedNotice')}</span>
-        <span style={{ font: 'var(--type-caption)', color: 'var(--text-muted)' }}>{i18n.t('perGenerationCost')}</span>
-      </div>
+      <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0,3fr) minmax(0,5fr) minmax(0,4fr)', gap: 16, alignItems: 'start' }}>
 
-      <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0,7fr) minmax(0,5fr)', gap: 16, alignItems: 'start' }}>
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
-          <Panel variant="prestige" ornament padding={0}>
-            <PanelHeader icon="sparkle" title={i18n.t('aiBuilderTitle')} />
-            <div style={{ padding: 16, display: 'flex', flexDirection: 'column', gap: 13 }}>
-              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
-                {quickPrompts.map((label) => (
-                  <button key={label} type="button" onClick={() => setPrompt(label)} style={{ padding: '7px 12px', borderRadius: 6, cursor: 'pointer', border: '1px dashed var(--divider-gold)', background: 'rgba(3,8,7,.5)', color: 'var(--text-muted)', font: 'var(--type-caption)' }}>{label}</button>
+        {/* Column 1: created panels */}
+        <Panel variant="base" padding={0}>
+          <PanelHeader icon="layout-template" title={i18n.t('panelStudioCreatedPanels')} trailing={<Button variant="ghost" size="sm" icon="plus" onClick={newPanel}>{i18n.t('panelStudioNewPanel')}</Button>} />
+          <div style={{ padding: 12, display: 'flex', flexDirection: 'column', gap: 10 }}>
+            <TextField value={listFilter} onChange={(v) => setListFilter(v)} placeholder={i18n.t('panelStudioSearch')} />
+            {artifacts === null ? (
+              <span style={{ font: 'var(--type-caption)', color: 'var(--text-muted)' }}>{i18n.t('panelStudioLoading')}</span>
+            ) : !filteredArtifacts.length ? (
+              <span style={{ font: 'var(--type-caption)', color: 'var(--text-muted)' }}>{i18n.t('panelStudioEmptyList')}</span>
+            ) : (
+              <div className="navrya-scroll" style={{ display: 'flex', flexDirection: 'column', gap: 8, maxHeight: 520, overflowY: 'auto' }}>
+                {filteredArtifacts.map((a) => (
+                  <Panel
+                    key={a.id} as="button" type="button" onClick={() => loadDetail(a.id)}
+                    variant={a.id === selectedId ? 'active' : 'raised'} padding={12} style={{ textAlign: 'start', cursor: 'pointer' }}
+                  >
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                        <span dir="auto" style={{ flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', font: 'var(--type-body)', fontWeight: 600, color: 'var(--text-primary)' }}>{a.title}</span>
+                        <Chip tone={PANEL_STUDIO_STATUS_TONE[a.status] || 'neutral'}>{i18n.t('panelStudioStatus_' + a.status)}</Chip>
+                      </div>
+                      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, font: 'var(--type-caption)', color: 'var(--text-dim)' }}>
+                        <span dir="ltr" className="navrya-tabular">{fmtChatDate(i18n, a.updatedAt)}</span>
+                        {a.status === 'archived'
+                          ? <Button variant="ghost" size="sm" onClick={(e) => { e.stopPropagation(); unarchiveArtifact(a.id); }}>{i18n.t('panelStudioUnarchive')}</Button>
+                          : <Button variant="ghost" size="sm" icon="trash" onClick={(e) => { e.stopPropagation(); setConfirmArchiveId(a.id); }}>{i18n.t('panelStudioArchive')}</Button>}
+                      </div>
+                    </div>
+                  </Panel>
                 ))}
               </div>
-              <div style={{ display: 'flex', flexDirection: 'column', borderRadius: 11, border: '1px solid var(--border-gold)', background: 'rgba(3,8,7,.55)', overflow: 'hidden' }}>
-                <textarea
-                  rows={4} value={prompt} onChange={(e) => setPrompt(e.target.value)} placeholder={i18n.t('aiBuilderPromptPlaceholder')}
-                  style={{ resize: 'vertical', boxSizing: 'border-box', padding: 15, border: 0, background: 'transparent', color: 'var(--text-primary)', font: 'var(--type-body)', outline: 'none' }}
+            )}
+          </div>
+        </Panel>
+
+        {/* Column 2: composer + code workspace */}
+        <Panel variant="prestige" ornament padding={0}>
+          <PanelHeader icon="sparkle" title={i18n.t('aiBuilderTitle')} trailing={codingEngineChip(engineInfo ? { codingEngineLabel: engineInfo.codingEngineLabel } : engine)} />
+          <div style={{ padding: 16, display: 'flex', flexDirection: 'column', gap: 13 }}>
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 10 }}>
+              <Select
+                value={provider} width={180} disabled={isStreaming}
+                options={providerCatalog.map((p) => ({ value: p.id, label: resolveCodingEngine(p.id).codingEngineLabel + ' · ' + providerLabel(i18n, p.id) }))}
+                onChange={(v) => setProvider(v)}
+              />
+              {providerEntry && (
+                <Select value={model} width={200} disabled={isStreaming} options={providerEntry.models.map((m) => ({ value: m, label: m }))} onChange={(v) => setModel(v)} />
+              )}
+              <span style={{ flex: 1 }} />
+              <span dir="ltr" style={{ font: 'var(--type-caption)', color: 'var(--text-dim)' }}>{(engineInfo && engineInfo.model) || model}</span>
+            </div>
+
+            <textarea
+              rows={3} value={prompt} onChange={(e) => setPrompt(e.target.value.slice(0, PANEL_STUDIO_MAX_PROMPT_CHARS))}
+              placeholder={i18n.t('panelStudioPromptPlaceholder')} disabled={isStreaming}
+              style={{ resize: 'vertical', boxSizing: 'border-box', padding: 13, borderRadius: 10, border: '1px solid var(--border-gold)', background: 'rgba(3,8,7,.55)', color: 'var(--text-primary)', font: 'var(--type-body)', outline: 'none' }}
+            />
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+              <span style={{ font: 'var(--type-caption)', color: 'var(--text-dim)' }}>{i18n.t('panelStudioPromptCounter', { n: i18n.number(prompt.length), max: i18n.number(PANEL_STUDIO_MAX_PROMPT_CHARS) })}</span>
+              <span style={{ flex: 1 }} />
+              {isStreaming
+                ? <Button variant="danger" size="sm" icon="close" onClick={cancelGenerate}>{i18n.t('panelStudioCancel')}</Button>
+                : <Button variant="primary" size="sm" icon="sparkle" disabled={!prompt.trim()} onClick={generate}>{i18n.t('panelStudioGenerate')}</Button>}
+            </div>
+
+            {stage === 'validating' && <Notice tone="info" icon="loader-circle">{i18n.t('panelStudioValidating')}</Notice>}
+            {stage === 'error' && <Notice tone="danger">{streamErrorMsg}</Notice>}
+
+            <div style={{ display: 'flex', gap: 6, borderBottom: '1px solid var(--border-hairline)' }}>
+              {['request', 'code', 'diff'].map((id) => (
+                <button
+                  key={id} type="button" onClick={() => setSubTab(id)}
+                  style={{
+                    padding: '9px 4px', marginBottom: -1, background: 'transparent', border: 0, borderBottom: '2px solid ' + (subTab === id ? 'var(--char-accent)' : 'transparent'),
+                    color: subTab === id ? 'var(--text-primary)' : 'var(--text-muted)', font: '600 12px/16px var(--font-ui)', cursor: 'pointer'
+                  }}
+                >{i18n.t('panelStudioTab_' + id)}</button>
+              ))}
+              <span style={{ flex: 1 }} />
+              {!editMode && !isStreaming && viewedRevision && detail && detail.artifact.status !== 'archived' && (
+                <Button variant="ghost" size="sm" icon="edit" onClick={startEdit}>{i18n.t('panelStudioEditSource')}</Button>
+              )}
+            </div>
+
+            {subTab === 'request' && (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 8, maxHeight: 380, overflowY: 'auto' }}>
+                {revisions.filter((r) => r.sourceKind === 'generated' && r.prompt).length === 0
+                  ? <span style={{ font: 'var(--type-caption)', color: 'var(--text-muted)' }}>{i18n.t('panelStudioNoPromptsYet')}</span>
+                  : revisions.filter((r) => r.sourceKind === 'generated' && r.prompt).map((r) => (
+                    <div key={r.id} style={{ padding: '9px 12px', borderRadius: 8, border: '1px solid var(--border-hairline)', background: 'rgba(3,8,7,.4)' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>
+                        <span dir="ltr" className="navrya-tabular" style={{ font: 'var(--type-caption)', color: 'var(--text-dim)' }}>{i18n.t('panelStudioRevisionN', { n: i18n.number(r.revisionNumber) })} · {fmtChatDate(i18n, r.createdAt)}</span>
+                      </div>
+                      <span dir="auto" style={{ font: 'var(--type-body)', color: 'var(--text-primary)' }}>{r.prompt}</span>
+                    </div>
+                  ))}
+              </div>
+            )}
+
+            {subTab === 'code' && (
+              editMode ? (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+                  {saveConflict && <Notice tone="warning">{i18n.t('panelStudioConflictNotice')} <Button variant="ghost" size="sm" onClick={() => loadDetail(detail.artifact.id)}>{i18n.t('panelStudioReload')}</Button></Notice>}
+                  <CodePane source={editedSource} editable onChange={setEditedSource} />
+                  <div style={{ display: 'flex', gap: 8 }}>
+                    <Button variant="secondary" size="sm" onClick={() => setPreviewingEdit(true)}>{i18n.t('panelStudioPreviewChanges')}</Button>
+                    <Button variant="primary" size="sm" onClick={saveEdit}>{i18n.t('panelStudioSaveRevision')}</Button>
+                    <span style={{ flex: 1 }} />
+                    <Button variant="ghost" size="sm" onClick={cancelEdit}>{i18n.t('panelStudioCancelEdit')}</Button>
+                  </div>
+                </div>
+              ) : (
+                <CodePane source={displaySource} placeholder={isStreaming ? '' : i18n.t('panelStudioNoCodeYet')} />
+              )
+            )}
+
+            {subTab === 'diff' && (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                <Select
+                  value={compareRevisionId || ''} width={220}
+                  options={[{ value: '', label: i18n.t('panelStudioDiffPick') }].concat(revisions.filter((r) => r.id !== (viewedRevision && viewedRevision.id)).map((r) => ({ value: r.id, label: i18n.t('panelStudioRevisionN', { n: i18n.number(r.revisionNumber) }) })))}
+                  onChange={(v) => setCompareRevisionId(v || null)}
                 />
-                <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 12px', borderTop: '1px solid var(--border-hairline)', background: 'rgba(11,20,21,.5)' }}>
-                  <span style={{ font: 'var(--type-caption)', color: error ? 'var(--danger)' : 'var(--text-muted)' }}>{error || (busy ? i18n.t('hintBusy') : prompt ? i18n.t('hintTyped') : i18n.t('installsOnBoard', { character: character.charAt(0).toUpperCase() + character.slice(1) }))}</span>
-                  <span style={{ flex: 1 }} />
-                  <Button variant="ghost" icon="mic" size="sm" style={{ height: 32, padding: '0 11px' }}>{i18n.t('speakIt')}</Button>
-                  <Button variant="primary" icon="sparkle" size="sm" style={{ height: 32, padding: '0 13px' }} disabled={!prompt.trim() || busy} onClick={generate}>{i18n.t('generatePanel')}</Button>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+                  <div>
+                    <div style={{ font: 'var(--type-caption)', color: 'var(--text-dim)', marginBottom: 4 }}>{viewedRevision ? i18n.t('panelStudioRevisionN', { n: i18n.number(viewedRevision.revisionNumber) }) : '—'}</div>
+                    <CodePane source={(viewedRevision && viewedRevision.source) || ''} />
+                  </div>
+                  <div>
+                    <div style={{ font: 'var(--type-caption)', color: 'var(--text-dim)', marginBottom: 4 }}>{compareRevisionId ? i18n.t('panelStudioRevisionN', { n: i18n.number((revisions.find((r) => r.id === compareRevisionId) || {}).revisionNumber) }) : '—'}</div>
+                    <CodePane source={(revisions.find((r) => r.id === compareRevisionId) && revisions.find((r) => r.id === compareRevisionId).source) || ''} />
+                  </div>
                 </div>
               </div>
+            )}
+          </div>
+        </Panel>
+
+        {/* Column 3: preview + revision inspector */}
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+          <Panel variant="base" padding={0}>
+            <PanelHeader icon="eye" title={i18n.t('panelStudioPreview')} />
+            <div style={{ padding: 14, display: 'flex', flexDirection: 'column', gap: 12 }}>
+              {(editMode ? (previewingEdit ? editedSource : '') : displaySource)
+                ? <SandboxedDashboardPanel source={editMode ? (previewingEdit ? editedSource : '') : displaySource} snapshotRef={snapshotRef} title={(detail && detail.artifact.title) || i18n.t('aiBuilderTitle')} pulse={0} />
+                : <span style={{ font: 'var(--type-caption)', color: 'var(--text-muted)' }}>{i18n.t('panelStudioNoPreviewYet')}</span>}
+              <Button
+                variant="primary" icon="plus" disabled={!currentRevision || !viewedRevision || applying || (detail && detail.artifact.status === 'archived')}
+                onClick={applyToDashboard}
+              >
+                {i18n.t(detail && detail.artifact.appliedRevisionId === (viewedRevision && viewedRevision.id) ? 'panelStudioApplied' : 'panelStudioApplyToDashboard')}
+              </Button>
             </div>
           </Panel>
 
-          {!!drafts.length && (
+          {detail && (
             <Panel variant="base" padding={0}>
-              <PanelHeader icon="flask-conical" title={i18n.t('draftsLabel')} trailing={<Chip tone="accent">{i18n.t('draftsCount', { count: i18n.number(drafts.length) })}</Chip>} />
-              <div style={{ padding: 16, display: 'flex', flexDirection: 'column', gap: 12 }}>
-                {drafts.map((d) => {
-                  const bars = draftBarHeights(d.id);
-                  return (
-                    <Panel key={d.id} variant="raised" style={{ display: 'flex', alignItems: 'stretch', gap: 14 }} padding={14}>
-                      <div style={{ width: 212, flex: 'none', borderRadius: 9, border: '1px solid var(--border-hairline)', background: 'rgba(3,8,7,.6)', padding: 11, display: 'flex', flexDirection: 'column', gap: 9 }}>
-                        <span style={{ display: 'flex', alignItems: 'center', gap: 7, font: '700 9px/12px var(--font-ui)', letterSpacing: '.1em', color: 'var(--text-muted)' }}><Icon name="report" size={14} />{i18n.t('draftPreviewLabel')}</span>
-                        <div style={{ display: 'flex', alignItems: 'flex-end', gap: 3, height: 44 }}>
-                          {bars.map((h, i) => <span key={i} style={{ flex: 1, borderRadius: '2px 2px 0 0', background: 'var(--char-accent)', opacity: .85, height: h + '%', display: 'block' }} />)}
-                        </div>
-                      </div>
-                      <div style={{ display: 'flex', flexDirection: 'column', gap: 10, flex: 1, minWidth: 0 }}>
-                        <span dir="auto" style={{ fontWeight: 600, fontSize: 15, lineHeight: '22px', color: 'var(--text-primary)' }}>{d.title}</span>
-                        <span dir="auto" style={{ font: 'var(--type-body)', color: 'var(--text-muted)', textWrap: 'pretty' }}>{d.desc}</span>
-                        <span style={{ flex: 1 }} />
-                        <div style={{ display: 'flex', alignItems: 'center', gap: 9 }}>
-                          <Button variant="primary" size="sm" icon="plus" style={{ height: 32 }} onClick={() => { addCustomPanel(character, d.title, d.desc); setDrafts((list) => list.filter((x) => x.id !== d.id)); }}>{i18n.t('addToBoard')}</Button>
-                          <Button variant="ghost" size="sm" icon="edit" style={{ height: 32 }}>{i18n.t('editDraftText')}</Button>
-                          <span style={{ flex: 1 }} />
-                          <Button variant="danger" size="sm" icon="trash" style={{ height: 32, width: 32, padding: 0 }} aria-label={i18n.t('discardDraft')} onClick={() => setDrafts((list) => list.filter((x) => x.id !== d.id))} />
-                        </div>
-                      </div>
-                    </Panel>
-                  );
-                })}
+              <PanelHeader icon="report" title={i18n.t('panelStudioRevisionHistory')} />
+              <div className="navrya-scroll" style={{ padding: 12, display: 'flex', flexDirection: 'column', gap: 8, maxHeight: 340, overflowY: 'auto' }}>
+                {revisions.map((r) => (
+                  <div key={r.id} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 10px', borderRadius: 8, border: '1px solid ' + (r.id === (viewedRevision && viewedRevision.id) ? 'var(--char-accent)' : 'var(--border-hairline)'), background: 'rgba(3,8,7,.4)' }}>
+                    <button type="button" onClick={() => setSelectedRevisionId(r.id)} style={{ flex: 1, minWidth: 0, textAlign: 'start', background: 'transparent', border: 0, cursor: 'pointer', display: 'flex', flexDirection: 'column', gap: 2 }}>
+                      <span dir="ltr" className="navrya-tabular" style={{ font: 'var(--type-caption)', color: 'var(--text-primary)' }}>{i18n.t('panelStudioRevisionN', { n: i18n.number(r.revisionNumber) })} · {fmtChatDate(i18n, r.createdAt)}</span>
+                      <span style={{ font: 'var(--type-caption)', color: 'var(--text-dim)' }}>{i18n.t('panelStudioSourceKind_' + r.sourceKind.replace('-', '_'))}{r.codingEngineId ? ' · ' + (resolveCodingEngine(r.provider) || {}).codingEngineLabel : ''}</span>
+                    </button>
+                    {detail.artifact.appliedRevisionId === r.id && <Chip tone="success">{i18n.t('panelStudioApplied')}</Chip>}
+                    {r.id !== currentRevision?.id && <Button variant="ghost" size="sm" onClick={() => restoreRevision(r.id)}>{i18n.t('panelStudioRestore')}</Button>}
+                  </div>
+                ))}
               </div>
             </Panel>
           )}
         </div>
-
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
-          <ManagePanelsCard i18n={i18n} character={character} />
-          <Panel variant="soon" padding={0}>
-            <PanelHeader icon="eye" iconColor="var(--gold-warm)" title={i18n.t('aiPanelLivePreviewTitle')} trailing={<SoonBadge i18n={i18n} />} />
-            <div style={{ padding: '16px 18px', display: 'flex', flexDirection: 'column', gap: 11 }}>
-              <p style={{ margin: 0, font: 'var(--type-caption)', color: 'var(--text-muted)', textWrap: 'pretty' }}>{i18n.t('aiPanelLivePreviewBody')}</p>
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-                {[88, 64, 41].map((w, i) => <span key={i} style={{ display: 'block', height: 9, borderRadius: 4, background: 'rgba(244,234,215,.06)', width: w + '%' }} />)}
-              </div>
-            </div>
-          </Panel>
-        </div>
       </div>
+
+      {confirmArchiveId && (
+        <Modal
+          title={i18n.t('panelStudioArchiveConfirmTitle')} icon="trash" onClose={() => setConfirmArchiveId(null)}
+          footer={<>
+            <Button variant="ghost" onClick={() => setConfirmArchiveId(null)}>{i18n.t('panelStudioCancelEdit')}</Button>
+            <span style={{ flex: 1 }} />
+            <Button variant="danger" onClick={() => archiveArtifact(confirmArchiveId)}>{i18n.t('panelStudioArchive')}</Button>
+          </>}
+        >
+          <p style={{ margin: 0, font: 'var(--type-body)', color: 'var(--text-muted)' }}>{i18n.t('panelStudioArchiveConfirmBody')}</p>
+        </Modal>
+      )}
     </div>
   );
 }
@@ -1706,11 +2086,13 @@ function AiAssistantView({ i18n, settingsStore, usageStore, chatHistoryStore }) 
     });
   }, []);
 
-  // Real-money subscription rollout: the CURRENT plan's feature flags (byok/premiumModels),
-  // reusing the exact same two endpoints SubscriptionTab already calls (accountProfileView.jsx) -
-  // never a third/parallel entitlements fetch. `planFeatures` defaults to an all-false shape so a
-  // slow/failed fetch fails CLOSED (locked), never open, on both gates below.
-  const [planFeatures, setPlanFeatures] = React.useState({ byok: false, premiumModels: false });
+  // Real-money subscription rollout: the CURRENT plan's feature flags (byok/premiumModels/
+  // aiPanelBuilder), reusing the exact same two endpoints SubscriptionTab already calls
+  // (accountProfileView.jsx) - never a third/parallel entitlements fetch. `planFeatures` defaults
+  // to an all-false shape so a slow/failed fetch fails CLOSED (locked), never open, on every gate
+  // below - including the Panel Studio tab's own client-side UX lock (server-side enforcement is
+  // authoritative there, via reserveForAiCall(); this is only ever a UX convenience).
+  const [planFeatures, setPlanFeatures] = React.useState({ byok: false, premiumModels: false, aiPanelBuilder: false });
   // 'model' | 'byok' | null - which lock the user just bumped into, so the inline notice below
   // shows the right copy; null hides it entirely.
   const [upgradeNotice, setUpgradeNotice] = React.useState(null);
@@ -1720,7 +2102,7 @@ function AiAssistantView({ i18n, settingsStore, usageStore, chatHistoryStore }) 
       fetch('/api/sync/subscriptions/catalog').then((r) => r.json())
     ]).then(([sub, cat]) => {
       const plan = cat.plans && cat.plans[sub.plan];
-      if (plan) setPlanFeatures({ byok: !!plan.features.byok, premiumModels: !!plan.features.premiumModels });
+      if (plan) setPlanFeatures({ byok: !!plan.features.byok, premiumModels: !!plan.features.premiumModels, aiPanelBuilder: !!plan.features.aiPanelBuilder });
     }).catch(() => {});
   }, []);
 
@@ -2240,7 +2622,7 @@ function AiAssistantView({ i18n, settingsStore, usageStore, chatHistoryStore }) 
 
       {topTab === 'persona' && <PersonaTab i18n={i18n} onGoTab={setTopTab} />}
       {topTab === 'learned' && <LearnedCommandsTab i18n={i18n} />}
-      {topTab === 'panelbuilder' && <PanelBuilderTab i18n={i18n} character={character} />}
+      {topTab === 'panelbuilder' && <PanelBuilderTab i18n={i18n} character={character} entitled={planFeatures.aiPanelBuilder} />}
       {topTab === 'costs' && <CostsTab i18n={i18n} catalog={catalog} usageStore={usageStore} settingsStore={settingsStore} realCostByModel={realCostByModel} />}
       {topTab === 'memory' && <MemoryTab i18n={i18n} memory={memory} memoryRows={memoryRows} onClearBucket={clearMemoryBucket} onExport={exportMemory} />}
       {topTab === 'activity' && <ActivityTab i18n={i18n} chats={chats} usageMonth={usageMonth} avgTokens={avgTokens} />}

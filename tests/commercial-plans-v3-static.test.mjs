@@ -43,7 +43,7 @@ test('aiAssistantView.jsx fetches plan features from the same two endpoints Subs
   const src = await read('navrya-src', 'aiAssistantView.jsx');
   assert.match(src, /fetch\('\/api\/sync\/subscriptions'\)/);
   assert.match(src, /fetch\('\/api\/sync\/subscriptions\/catalog'\)/);
-  assert.match(src, /React\.useState\(\{ byok: false, premiumModels: false \}\)/, 'the default state must fail CLOSED (locked), never open, while loading or on a fetch error');
+  assert.match(src, /React\.useState\(\{ byok: false, premiumModels: false, aiPanelBuilder: false \}\)/, 'the default state must fail CLOSED (locked), never open, while loading or on a fetch error - including the Panel Studio aiPanelBuilder gate added alongside byok/premiumModels');
 });
 
 test('accountProfileView.jsx: PLAN_ORDER includes the new pro plan, between plus and personalized', async () => {
