@@ -257,6 +257,7 @@
       panelStudioSourceKind_generated: 'تولیدشده با هوش مصنوعی', panelStudioSourceKind_manual_edit: 'ویرایش دستی', panelStudioSourceKind_restore: 'بازگردانی‌شده',
       panelStudioNotEntitledTitle: 'استودیوی کدنویسی نیازمند ارتقای اشتراک است', panelStudioNotEntitledBody: 'ساخت پنل با هوش مصنوعی در پلن فعلی تو فعال نیست. برای دسترسی، اشتراکت را ارتقا بده.', panelStudioUpgrade: 'مشاهدهٔ پلن‌ها', panelStudioNotEntitled: 'این قابلیت در پلن فعلی تو فعال نیست.',
       panelStudioErrorGeneric: 'درخواست ناموفق بود. دوباره امتحان کن.', panelStudioErrorProviderUnsupported: 'این ارائه‌دهنده برای کدنویسی پشتیبانی نمی‌شود.', panelStudioErrorPromptRequired: 'یک درخواست بنویس.',
+      panelStudioProviderUnsupportedNotice: 'ارائه‌دهندهٔ فعال شما ({provider}) برای استودیوی کدنویسی پشتیبانی نمی‌شود. برای ادامه، در تنظیمات هوش مصنوعی یکی از ارائه‌دهنده‌های پشتیبانی‌شده را فعال کن.', panelStudioPreviewWaitingForValidation: 'در حال تولید... پیش‌نمایش پس از تأیید کد نمایش داده می‌شود.', panelStudioErrorArtifactNotFound: 'این پنل پیدا نشد یا متعلق به تو نیست.',
       panelStudioErrorProvider: 'ارائه‌دهنده هوش مصنوعی پاسخ نداد. دوباره امتحان کن.', panelStudioErrorUnavailable: 'این پنل با داده‌های موجود قابل ساخت نیست.', panelStudioErrorEmpty: 'پاسخی برای ساخت پنل دریافت نشد.',
       panelStudioErrorTooLarge: 'کد تولیدشده از سقف مجاز بزرگ‌تر است.', panelStudioErrorPersistFailed: 'ذخیرهٔ نسخهٔ جدید ناموفق بود.', panelStudioErrorWallet: 'موجودی کیف پول کافی نیست.',
       managePanelsTitle: 'پنل‌های نصب‌شده', shownOfTotal: '{shown}/{total} نمایش داده می‌شود', dragToReorder: 'برای جابه‌جایی بکش',
@@ -520,6 +521,7 @@
       panelStudioSourceKind_generated: 'مولَّد بالذكاء الاصطناعي', panelStudioSourceKind_manual_edit: 'تعديل يدوي', panelStudioSourceKind_restore: 'مستعادة',
       panelStudioNotEntitledTitle: 'استوديو اللوحات يتطلب ترقية الاشتراك', panelStudioNotEntitledBody: 'توليد اللوحات بالذكاء الاصطناعي غير مفعّل في خطتك الحالية. رقِّ اشتراكك للوصول إليه.', panelStudioUpgrade: 'عرض الخطط', panelStudioNotEntitled: 'هذه الميزة غير مفعّلة في خطتك الحالية.',
       panelStudioErrorGeneric: 'فشل الطلب. حاول مرة أخرى.', panelStudioErrorProviderUnsupported: 'هذا المزوّد غير مدعوم للبرمجة.', panelStudioErrorPromptRequired: 'اكتب طلباً أولاً.',
+      panelStudioProviderUnsupportedNotice: 'المزوّد النشط لديك ({provider}) غير مدعوم في استوديو البرمجة. فعّل مزوّداً مدعوماً في إعدادات الذكاء الاصطناعي للمتابعة.', panelStudioPreviewWaitingForValidation: 'جارٍ التوليد... ستظهر المعاينة بعد التحقق من الكود.', panelStudioErrorArtifactNotFound: 'لم يتم العثور على هذه اللوحة أو أنها ليست ملكك.',
       panelStudioErrorProvider: 'لم يستجب مزوّد الذكاء الاصطناعي. حاول مرة أخرى.', panelStudioErrorUnavailable: 'لا يمكن بناء هذه اللوحة من البيانات المتاحة.', panelStudioErrorEmpty: 'لم يصل رد قابل للاستخدام لهذه اللوحة.',
       panelStudioErrorTooLarge: 'الكود المُولَّد أكبر من الحجم المسموح.', panelStudioErrorPersistFailed: 'فشل حفظ النسخة الجديدة.', panelStudioErrorWallet: 'رصيد محفظتك غير كافٍ.'
     },
@@ -775,6 +777,7 @@
       panelStudioSourceKind_generated: 'AI-generated', panelStudioSourceKind_manual_edit: 'Manual edit', panelStudioSourceKind_restore: 'Restored',
       panelStudioNotEntitledTitle: 'Panel Studio needs a plan upgrade', panelStudioNotEntitledBody: 'AI panel generation is not enabled on your current plan. Upgrade your subscription to get access.', panelStudioUpgrade: 'View plans', panelStudioNotEntitled: 'This feature is not enabled on your current plan.',
       panelStudioErrorGeneric: 'The request failed. Try again.', panelStudioErrorProviderUnsupported: 'That provider is not supported for coding.', panelStudioErrorPromptRequired: 'Write a request first.',
+      panelStudioProviderUnsupportedNotice: 'Your active provider ({provider}) is not supported by the Panel Studio. Switch to a supported provider in AI settings to continue.', panelStudioPreviewWaitingForValidation: 'Generating... the preview appears once the code is validated.', panelStudioErrorArtifactNotFound: 'That panel could not be found, or it is not yours.',
       panelStudioErrorProvider: 'The AI provider did not respond. Try again.', panelStudioErrorUnavailable: 'This panel cannot be built from the data available.', panelStudioErrorEmpty: 'No usable reply came back for this panel.',
       panelStudioErrorTooLarge: 'The generated code is over the allowed size.', panelStudioErrorPersistFailed: 'Saving the new revision failed.', panelStudioErrorWallet: 'Your wallet balance is insufficient.',
       managePanelsTitle: 'Installed panels', shownOfTotal: '{shown}/{total} shown', dragToReorder: 'Drag to reorder',
@@ -1037,6 +1040,7 @@
       panelStudioSourceKind_generated: 'Generado por IA', panelStudioSourceKind_manual_edit: 'Edición manual', panelStudioSourceKind_restore: 'Restaurado',
       panelStudioNotEntitledTitle: 'El Estudio de Paneles requiere mejorar tu plan', panelStudioNotEntitledBody: 'La generación de paneles con IA no está habilitada en tu plan actual. Mejora tu suscripción para acceder.', panelStudioUpgrade: 'Ver planes', panelStudioNotEntitled: 'Esta función no está habilitada en tu plan actual.',
       panelStudioErrorGeneric: 'La solicitud falló. Inténtalo de nuevo.', panelStudioErrorProviderUnsupported: 'Ese proveedor no es compatible para codificación.', panelStudioErrorPromptRequired: 'Escribe una solicitud primero.',
+      panelStudioProviderUnsupportedNotice: 'Tu proveedor activo ({provider}) no es compatible con el Estudio de Paneles. Cambia a un proveedor compatible en la configuración de IA para continuar.', panelStudioPreviewWaitingForValidation: 'Generando... la vista previa aparecerá una vez validado el código.', panelStudioErrorArtifactNotFound: 'No se encontró ese panel, o no te pertenece.',
       panelStudioErrorProvider: 'El proveedor de IA no respondió. Inténtalo de nuevo.', panelStudioErrorUnavailable: 'Este panel no se puede construir con los datos disponibles.', panelStudioErrorEmpty: 'No llegó una respuesta utilizable para este panel.',
       panelStudioErrorTooLarge: 'El código generado supera el tamaño permitido.', panelStudioErrorPersistFailed: 'No se pudo guardar la nueva revisión.', panelStudioErrorWallet: 'El saldo de tu billetera es insuficiente.'
     }

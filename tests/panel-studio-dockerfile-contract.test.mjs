@@ -7,15 +7,18 @@ import { fileURLToPath, pathToFileURL } from 'node:url';
 
 // Same real-production-incident precedent tests/dockerfile-app-image-contract.test.mjs already
 // established for ai-conversation-matcher.js: the `app` Docker stage never copies navrya-src/ at
-// all (that directory is browser source, compiled into the `web` stage's bundles), so the three
-// pure, dependency-free ESM modules server/pattern-ai-server.mjs imports directly from navrya-src/
-// (codingEngine.js, panelStudioTargets.js, dashboardPanelBuilder.js, plus its own
-// dashboardPanelBridgeDoc.js dependency) must each be copied individually, at the exact relative
-// path they resolve against from server/pattern-ai-server.mjs. dashboardPanelSandbox.jsx is
-// client-only and must never be copied here.
+// all (that directory is browser source, compiled into the `web` stage's bundles), so every pure,
+// dependency-free ESM module server/pattern-ai-server.mjs imports, directly or transitively, from
+// navrya-src/ (codingEngine.js, panelStudioTargets.js, dashboardPanelBuilder.js, its
+// dashboardPanelBridgeDoc.js dependency, and panelSafeRender.js - imported by
+// dashboardPanelBuilder.js itself, for the security redesign's own allowed-tag list, not only by
+// the client-only sandbox) must each be copied individually, at the exact relative path they
+// resolve against from server/pattern-ai-server.mjs. dashboardPanelSandbox.jsx/
+// analysisWorkspacePanelRuntime.jsx are client-only and must never be copied here - only
+// panelSafeRender.js, the shared module BOTH of them and the server-side prompt builder import, is.
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
-const APP_STAGE_FILES = ['codingEngine.js', 'panelStudioTargets.js', 'dashboardPanelBuilder.js', 'dashboardPanelBridgeDoc.js'];
+const APP_STAGE_FILES = ['codingEngine.js', 'panelStudioTargets.js', 'dashboardPanelBuilder.js', 'dashboardPanelBridgeDoc.js', 'panelSafeRender.js'];
 
 test('the app Docker stage copies each Panel Studio navrya-src module the gateway imports, at the exact relative path it resolves against', async () => {
   const dockerfile = await readFile(path.join(root, 'Dockerfile'), 'utf8');

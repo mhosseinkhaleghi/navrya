@@ -406,6 +406,21 @@ function aiWalletEnforced() {
   return String(process.env.AI_WALLET_ENFORCED || '').trim().toLowerCase() === 'true';
 }
 
+// GET counterpart to internalWalletCall() below - same shared-secret bridge, fails CLOSED (null)
+// on any non-2xx or network error, same posture as verifySession(): an unreachable Community API
+// must never be treated as "this is fine", it must block whatever gate is asking.
+async function internalGetJson(path) {
+  try {
+    const url = (process.env.COMMUNITY_API_URL || 'http://127.0.0.1:8788') + path;
+    const headers = {};
+    if (process.env.INTERNAL_API_SECRET) headers['x-internal-secret'] = process.env.INTERNAL_API_SECRET;
+    const response = await fetch(url, { headers, signal: AbortSignal.timeout(3000) });
+    return response.ok ? await response.json() : null;
+  } catch (_) {
+    return null;
+  }
+}
+
 async function internalWalletCall(path, payload) {
   const url = (process.env.COMMUNITY_API_URL || 'http://127.0.0.1:8788') + path;
   const headers = { 'Content-Type': 'application/json' };
@@ -1289,12 +1304,17 @@ async function resolvePanelBuilderProviderKeyAndModel(provider, apiKeyOverride, 
 // Same generic internal-bridge shape as internalWalletCall() above (x-internal-secret header,
 // COMMUNITY_API_URL base, bounded timeout) - a distinct helper only so a future change to either
 // bridge's timeout/retry policy doesn't have to consider the other's callers.
-async function internalPanelArtifactsCall(path, payload) {
+// externalSignal (when given) is composed with the call's own 5s timeout via the file's existing
+// composedSignal() helper, so a client disconnect that lands WHILE this persistence call is in
+// flight aborts the upstream fetch too, instead of letting an orphaned revision get written for a
+// caller that is already gone.
+async function internalPanelArtifactsCall(path, payload, externalSignal) {
   try {
     const url = (process.env.COMMUNITY_API_URL || 'http://127.0.0.1:8788') + path;
     const headers = { 'Content-Type': 'application/json' };
     if (process.env.INTERNAL_API_SECRET) headers['x-internal-secret'] = process.env.INTERNAL_API_SECRET;
-    const response = await fetch(url, { method: 'POST', headers, body: JSON.stringify(payload), signal: AbortSignal.timeout(5000) });
+    const signal = composedSignal(AbortSignal.timeout(5000), externalSignal);
+    const response = await fetch(url, { method: 'POST', headers, body: JSON.stringify(payload), signal });
     return response.ok ? await response.json() : null;
   } catch (_) {
     return null;
@@ -1306,6 +1326,18 @@ async function internalPanelArtifactsCall(path, payload) {
 // the __streamed flag in its returned result, exactly like every other route's result is read
 // generically for wallet-settle/usage-record purposes without needing any route-specific code
 // there).
+// Ends the response and returns true iff the caller should stop (either a genuine client
+// disconnect, or the response has already been fully written by an earlier step) - the one guard
+// reused at every point in panelBuilderGenerate() where real time has passed since the last
+// abort check, most importantly the gap between the upstream stream finishing and
+// validation/persistence starting/finishing, where a disconnect can otherwise land unnoticed.
+function panelStudioAbortedOrEnded(response, externalSignal) {
+  if (response.writableEnded) return true;
+  if (!externalSignal.aborted) return false;
+  try { response.end(); } catch (_) { /* socket already gone */ }
+  return true;
+}
+
 async function panelBuilderGenerate(body, session, response, externalSignal) {
   const target = String(body.target || '');
   if (!isSupportedTarget(target)) throw new Error('PANEL_STUDIO_TARGET_UNSUPPORTED');
@@ -1314,8 +1346,34 @@ async function panelBuilderGenerate(body, session, response, externalSignal) {
   const boundedPrompt = rawPrompt.slice(0, DASHBOARD_PANEL_MAX_PROMPT_CHARS);
   const engine = resolveCodingEngine(body.provider);
   if (!engine) throw new Error('PANEL_STUDIO_PROVIDER_UNSUPPORTED');
-
   const provider = body.provider;
+
+  // Authoritative entitlement gate - independent of AI_WALLET_ENFORCED, independent of BYOK, and
+  // runs BEFORE any SSE header, provider-key resolution, or provider request. The generic wallet
+  // reservation path (reserveForAiCall(), server/commercial/wallet-service.mjs) only ever runs
+  // when billing enforcement is on AND the caller isn't BYOK - a paid-plan feature gate must never
+  // depend on either of those, and a trader supplying their own API key must never be able to
+  // reach a feature their subscription plan does not include. This is the one gate that always
+  // runs, unconditionally, for this route.
+  const entitlements = await internalGetJson('/internal/entitlements/' + encodeURIComponent(session.userId));
+  if (!entitlements || !entitlements.features || entitlements.features.aiPanelBuilder !== true) {
+    throw new Error('PANEL_STUDIO_NOT_ENTITLED');
+  }
+
+  // The "previous source" a revision request builds on is always loaded and ownership-verified
+  // here, server-side - never accepted as a client-supplied string, which would let a browser
+  // smuggle arbitrary content into the model's own context (or read/leak another user's real
+  // panel source into a generation transcript) simply by claiming an artifactId it does not own.
+  // Runs before any provider work so a forged/foreign artifactId fails closed with a plain JSON
+  // error instead of burning a full paid generation that would only fail at persist time anyway.
+  let previousSource = null;
+  const artifactId = body.artifactId ? String(body.artifactId) : null;
+  if (artifactId) {
+    const owned = await internalGetJson('/internal/panel-artifacts/' + encodeURIComponent(artifactId) + '?userId=' + encodeURIComponent(session.userId));
+    if (!owned || !owned.artifact) throw new Error('PANEL_STUDIO_ARTIFACT_NOT_FOUND');
+    previousSource = owned.currentRevision ? owned.currentRevision.source : null;
+  }
+
   const { key, model } = await resolvePanelBuilderProviderKeyAndModel(provider, body.apiKey, body.model);
 
   writeSseHeaders(response);
@@ -1324,8 +1382,9 @@ async function panelBuilderGenerate(body, session, response, externalSignal) {
 
   // The trader's raw text is untrusted data wrapped by this module's own system policy (output
   // contract, sandbox capabilities, honesty rule) - built here, server-side, immediately before
-  // dispatch, never accepted from the client as a pre-built instruction.
-  const instruction = buildDashboardPanelPrompt({ prompt: boundedPrompt, lang: body.language, previousSource: body.previousSource || null });
+  // dispatch, never accepted from the client as a pre-built instruction. previousSource (when
+  // present) is the artifact's own real current source, loaded and ownership-verified above.
+  const instruction = buildDashboardPanelPrompt({ prompt: boundedPrompt, lang: body.language, previousSource });
 
   let fullText = '';
   const onDelta = (chunk) => { fullText += chunk; sseWrite(response, 'delta', { text: chunk }); };
@@ -1341,18 +1400,20 @@ async function panelBuilderGenerate(body, session, response, externalSignal) {
     }
   } catch (error) {
     // A genuine client disconnect: the underlying connection is already gone, there is nothing
-    // meaningful left to write, and validating/persistence must never be reached. Still calling
-    // response.end() defensively (a no-op on an already-destroyed socket) matters because the SSE
-    // headers were already sent above - without marking the response ended here, the outer
-    // dispatcher's catch block would not know headers already went out and would attempt a second,
-    // conflicting write (ERR_HTTP_HEADERS_SENT).
-    if (externalSignal.aborted) {
-      if (!response.writableEnded) { try { response.end(); } catch (_) { /* socket already gone */ } }
-      throw error;
+    // meaningful left to write, and validating/persistence must never be reached.
+    if (panelStudioAbortedOrEnded(response, externalSignal)) {
+      throw Object.assign(new Error('PANEL_STUDIO_ABORTED'), { alreadyStreamed: true });
     }
     sseWrite(response, 'error', { code: 'PROVIDER_ERROR', message: error.message || 'PROVIDER_FAILED' });
     response.end();
     throw Object.assign(new Error('PANEL_STUDIO_GENERATION_FAILED'), { alreadyStreamed: true });
+  }
+
+  // Re-checked here on purpose: a disconnect can land in the gap between the upstream call
+  // resolving and validating/persistence ever starting - real time has passed (the whole
+  // streamed generation), and nothing before this line re-confirms the client is still there.
+  if (panelStudioAbortedOrEnded(response, externalSignal)) {
+    throw Object.assign(new Error('PANEL_STUDIO_ABORTED'), { alreadyStreamed: true });
   }
 
   sseWrite(response, 'validating', {});
@@ -1369,13 +1430,25 @@ async function panelBuilderGenerate(body, session, response, externalSignal) {
     throw Object.assign(new Error('PANEL_STUDIO_GENERATION_FAILED'), { alreadyStreamed: true });
   }
 
+  // Re-checked once more immediately before persistence - the parse/size checks above are
+  // synchronous and cheap, but this is the last possible point before a revision is actually
+  // written, and the internal call itself is also given `externalSignal` so a disconnect that
+  // lands WHILE that call is in flight aborts it too, rather than letting it complete anyway.
+  if (panelStudioAbortedOrEnded(response, externalSignal)) {
+    throw Object.assign(new Error('PANEL_STUDIO_ABORTED'), { alreadyStreamed: true });
+  }
+
   // Persist ONLY after validation succeeded above - never on a cancelled or errored stream.
   const bridgeResult = await internalPanelArtifactsCall('/internal/panel-artifacts/revisions', {
-    userId: session.userId, artifactId: body.artifactId || null, target,
-    title: body.artifactId ? undefined : dashboardPanelTitleFromPrompt(boundedPrompt),
+    userId: session.userId, artifactId, target,
+    title: artifactId ? undefined : dashboardPanelTitleFromPrompt(boundedPrompt),
     source: parsed.source, prompt: boundedPrompt, provider, model,
     codingEngineId: engine.codingEngineId, baseRevisionId: body.baseRevisionId || null
-  });
+  }, externalSignal);
+
+  if (panelStudioAbortedOrEnded(response, externalSignal)) {
+    throw Object.assign(new Error('PANEL_STUDIO_ABORTED'), { alreadyStreamed: true });
+  }
   if (!bridgeResult || !bridgeResult.artifact) {
     // A conflict/ownership/validation failure from the internal bridge surfaces here only as a
     // generic PERSIST_FAILED (the richer error code is not threaded through internalPanelArtifactsCall's
@@ -4645,11 +4718,15 @@ const server = http.createServer(async (request, response) => {
     const status = error.message === 'REQUEST_TOO_LARGE' ? 413
       : error.message === 'INVALID_JSON' ? 400
       : error.message === 'PANEL_STUDIO_TARGET_UNSUPPORTED' || error.message === 'PANEL_STUDIO_PROMPT_REQUIRED' || error.message === 'PANEL_STUDIO_PROVIDER_UNSUPPORTED' ? 400
+      // Thrown before writeSseHeaders() ever runs, so this is a real, plain JSON error response a
+      // client actually reads - not a synthetic post-hoc status for an already-ended SSE stream.
+      : error.message === 'PANEL_STUDIO_NOT_ENTITLED' ? 403
+      : error.message === 'PANEL_STUDIO_ARTIFACT_NOT_FOUND' ? 404
       // The SSE route always writes its own terminal `error` frame before throwing this - the
       // status computed here is never actually read by an SSE client, but response.writableEnded
       // already returned above in every real case, so this branch only matters for the (already
       // covered) fully-synthetic direct-unit-test call of panelBuilderGenerate itself.
-      : error.message === 'PANEL_STUDIO_GENERATION_FAILED' ? 500
+      : error.message === 'PANEL_STUDIO_GENERATION_FAILED' || error.message === 'PANEL_STUDIO_ABORTED' ? 500
       : /_API_KEY_MISSING$/.test(error.message || '') ? 503
       // geminiVoiceFailureCode() embeds the real upstream HTTP status in the message (e.g.
       // GEMINI_TTS_FAILED_429 when Gemini itself rate-limits the call) - surface that real status

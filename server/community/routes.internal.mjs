@@ -343,5 +343,23 @@ export function router(repo) {
     }
   }));
 
+  // Vibe Coding Panel Studio: called ONLY from pattern-ai-server.mjs's SSE generation handler,
+  // BEFORE any provider call, whenever a request names an artifactId (a "regenerate this panel"
+  // request). Server-loads the artifact's real current-revision source and re-verifies ownership
+  // here - the gateway's own userId comes from its verified session, never from the request body -
+  // so the generation prompt's "previous source" context is always the trader's OWN real prior
+  // revision, never a client-supplied string a browser could substitute to smuggle arbitrary
+  // content into the model's own context under someone else's artifact id.
+  app.get('/panel-artifacts/:artifactId', asyncHandler(async (req, res) => {
+    if (!secretOk(req)) return res.status(403).json({ error: 'INTERNAL_SECRET_REQUIRED' });
+    const userId = String(req.query.userId || '');
+    if (!userId) return res.status(400).json({ error: 'VALIDATION_FAILED' });
+    const artifact = await repo.panelStudioArtifacts.get(req.params.artifactId);
+    if (!artifact) return res.status(404).json({ error: 'ARTIFACT_NOT_FOUND' });
+    if (artifact.userId !== userId) return res.status(403).json({ error: 'NOT_ARTIFACT_OWNER' });
+    const currentRevision = artifact.currentRevisionId ? await repo.panelStudioArtifacts.getRevision(artifact.currentRevisionId) : null;
+    res.json({ artifact, currentRevision });
+  }));
+
   return app;
 }

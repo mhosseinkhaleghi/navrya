@@ -18,12 +18,12 @@ import { currentNavryaCharacter } from './currentCharacter.js';
 // already read/write, never a second board representation.
 import { SPANS, loadBoard, saveBoard, catalogForLang, resolveCustomEntry, addCustomPanel, addArtifactPanel } from './dashboardView.jsx';
 // Vibe Coding Panel Studio - real AI code generation for dashboard panels, replacing the old
-// prose-draft-only PanelBuilderTab below. resolveCodingEngine/SUPPORTED_PROVIDERS is the same
+// prose-draft-only PanelBuilderTab below. resolveCodingEngine/isSupportedProvider is the same
 // deterministic mapping server/pattern-ai-server.mjs uses for the SSE `engine` event, so the
 // client-shown "Codex"/"Claude Code" chip can never drift from what the server actually reports.
-import { resolveCodingEngine, isSupportedProvider, SUPPORTED_PROVIDERS } from './codingEngine.js';
+import { resolveCodingEngine, isSupportedProvider } from './codingEngine.js';
 import { MAX_PROMPT_CHARS as PANEL_STUDIO_MAX_PROMPT_CHARS } from './dashboardPanelBuilder.js';
-import { SandboxedDashboardPanel, buildDashboardBridgeSnapshot } from './dashboardPanelSandbox.jsx';
+import { SandboxedDashboardPanel, useDashboardBridgeSnapshot } from './dashboardPanelSandbox.jsx';
 
 function fmtUsd(microUsd) { return '$' + ((Number(microUsd) || 0) / 1000000).toFixed(4); }
 
@@ -1137,6 +1137,9 @@ function panelStudioErrorMessage(i18n, code, message) {
   const key = {
     PANEL_STUDIO_PROVIDER_UNSUPPORTED: 'panelStudioErrorProviderUnsupported',
     PANEL_STUDIO_PROMPT_REQUIRED: 'panelStudioErrorPromptRequired',
+    PANEL_STUDIO_NOT_ENTITLED: 'panelStudioNotEntitled',
+    PANEL_STUDIO_ARTIFACT_NOT_FOUND: 'panelStudioErrorArtifactNotFound',
+    PANEL_STUDIO_ABORTED: 'panelStudioErrorGeneric',
     PROVIDER_ERROR: 'panelStudioErrorProvider',
     GENERATION_UNAVAILABLE: 'panelStudioErrorUnavailable',
     GENERATION_EMPTY: 'panelStudioErrorEmpty',
@@ -1183,10 +1186,6 @@ async function readPanelStudioSse(response, onEvent) {
 function PanelBuilderTab({ i18n, character, entitled }) {
   const lang = i18n.language();
   const settingsStore = window.TradeJournalAISettingsStore;
-  const providerCatalog = React.useMemo(
-    () => (settingsStore ? settingsStore.providerCatalog().filter((p) => isSupportedProvider(p.id)) : []),
-    [settingsStore]
-  );
 
   // ---- created-panels list (column 1) ----
   const [artifacts, setArtifacts] = React.useState(null);
@@ -1227,20 +1226,25 @@ function PanelBuilderTab({ i18n, character, entitled }) {
   }
 
   // ---- composer / coding-engine (column 2) ----
-  const [provider, setProvider] = React.useState(() => {
-    const active = settingsStore ? settingsStore.activeProvider() : null;
-    return isSupportedProvider(active) ? active : (SUPPORTED_PROVIDERS[0] || 'openai');
-  });
-  const providerEntry = providerCatalog.find((p) => p.id === provider);
-  const [model, setModel] = React.useState(() => {
-    const active = settingsStore ? settingsStore.activeProvider() : null;
-    if (active === provider && settingsStore) return settingsStore.activeModel();
-    return providerEntry && providerEntry.models[0];
-  });
+  // Canonical, server-validated selection only - the Studio never offers its own independent
+  // provider/model picker (a past version did; a trader could pick "Claude Code" here while their
+  // real AI Assistant settings stayed on a different provider, and the server has no way to know
+  // which one the trader actually meant). It always follows the trader's real, live AI Assistant
+  // setting (Keys tab) and updates the moment that changes, exactly like every other engine chip
+  // in this app. A provider this Studio has no real coding-engine mapping for (only openai/
+  // anthropic ship one - see codingEngine.js) is shown as an honest, disabled unsupported state -
+  // never silently swapped for OpenAI, which would send a real, billed provider request under a
+  // coding-engine label the trader never chose.
+  const [provider, setProvider] = React.useState(() => (settingsStore ? settingsStore.activeProvider() : null));
+  const [model, setModel] = React.useState(() => (settingsStore ? settingsStore.activeModel() : null));
   React.useEffect(() => {
-    if (providerEntry && providerEntry.models.indexOf(model) === -1) setModel(providerEntry.models[0]);
-  }, [provider]); // eslint-disable-line react-hooks/exhaustive-deps
-  const engine = resolveCodingEngine(provider);
+    if (!settingsStore) return undefined;
+    const sync = () => { setProvider(settingsStore.activeProvider()); setModel(settingsStore.activeModel()); };
+    window.addEventListener('tradejournal:ai-settings-changed', sync);
+    return () => window.removeEventListener('tradejournal:ai-settings-changed', sync);
+  }, [settingsStore]);
+  const providerSupported = isSupportedProvider(provider);
+  const engine = providerSupported ? resolveCodingEngine(provider) : null;
 
   const [prompt, setPrompt] = React.useState('');
   const [subTab, setSubTab] = React.useState('code'); // 'request' | 'code' | 'diff'
@@ -1280,11 +1284,21 @@ function PanelBuilderTab({ i18n, character, entitled }) {
   const currentRevision = detail ? revisions.find((r) => r.id === detail.artifact.currentRevisionId) : null;
   const viewedRevision = selectedRevisionId ? revisions.find((r) => r.id === selectedRevisionId) : currentRevision;
   const isStreaming = stage === 'starting' || stage === 'streaming' || stage === 'validating';
+  // Code pane only - streamed/unvalidated deltas are shown here as inert text while they arrive,
+  // never executed. The server itself never persists a revision from a stream it hasn't fully
+  // validated (server/pattern-ai-server.mjs's panelBuilderGenerate), and the Preview column below
+  // mirrors that same rule client-side via previewSource, not this variable.
   const displaySource = isStreaming ? streamText : (editMode ? editedSource : ((viewedRevision && viewedRevision.source) || ''));
+  // The one and only source the sandbox may ever mount: never streamText, never a partial/
+  // in-flight delta - only a fully validated, already-persisted revision (or, in manual-edit
+  // preview, the trader's own not-yet-saved local edit, which never touches the network either
+  // way). While a generation is streaming this is always '', regardless of edit mode, so no
+  // partial source can ever reach SandboxedDashboardPanel.
+  const previewSource = editMode ? (previewingEdit ? editedSource : '') : (isStreaming ? '' : displaySource);
 
   async function generate() {
     const text = prompt.trim();
-    if (!text || isStreaming) return;
+    if (!text || isStreaming || !providerSupported) return;
     setStage('starting'); setStreamText(''); setStreamErrorMsg(''); setEngineInfo(null); setSubTab('code');
     const controller = new AbortController();
     abortRef.current = controller;
@@ -1361,23 +1375,35 @@ function PanelBuilderTab({ i18n, character, entitled }) {
     refreshList();
   }
 
+  const [applyErrorMsg, setApplyErrorMsg] = React.useState('');
+
   async function applyToDashboard() {
     if (!detail || !viewedRevision) return;
     setApplying(true);
+    setApplyErrorMsg('');
     try {
-      await fetch('/api/sync/panel-studio/artifacts/' + detail.artifact.id + '/apply', {
+      const response = await fetch('/api/sync/panel-studio/artifacts/' + detail.artifact.id + '/apply', {
         method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ revisionId: viewedRevision.id })
       });
+      // A board entry is only ever added locally once the server has actually recorded this
+      // revision as applied - a failed/expired-session apply call must never leave a dashboard
+      // slot pointing at a revision the server never marked applied.
+      if (!response.ok) {
+        const body = await response.json().catch(() => ({}));
+        setApplyErrorMsg(panelStudioErrorMessage(i18n, body.error, ''));
+        return;
+      }
       addArtifactPanel(character, detail.artifact.id, detail.artifact.title, viewedRevision.id);
       loadDetail(detail.artifact.id);
       refreshList();
+    } catch (_) {
+      setApplyErrorMsg(i18n.t('panelStudioErrorGeneric'));
     } finally {
       setApplying(false);
     }
   }
 
-  const snapshotRef = React.useRef(null);
-  if (snapshotRef.current === null) snapshotRef.current = buildDashboardBridgeSnapshot(character);
+  const { snapshotRef, pulse } = useDashboardBridgeSnapshot(character);
 
   if (!entitled) {
     return (
@@ -1436,22 +1462,21 @@ function PanelBuilderTab({ i18n, character, entitled }) {
         <Panel variant="prestige" ornament padding={0}>
           <PanelHeader icon="sparkle" title={i18n.t('aiBuilderTitle')} trailing={codingEngineChip(engineInfo ? { codingEngineLabel: engineInfo.codingEngineLabel } : engine)} />
           <div style={{ padding: 16, display: 'flex', flexDirection: 'column', gap: 13 }}>
-            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 10 }}>
-              <Select
-                value={provider} width={180} disabled={isStreaming}
-                options={providerCatalog.map((p) => ({ value: p.id, label: resolveCodingEngine(p.id).codingEngineLabel + ' · ' + providerLabel(i18n, p.id) }))}
-                onChange={(v) => setProvider(v)}
-              />
-              {providerEntry && (
-                <Select value={model} width={200} disabled={isStreaming} options={providerEntry.models.map((m) => ({ value: m, label: m }))} onChange={(v) => setModel(v)} />
-              )}
+            {!providerSupported && (
+              <Notice tone="warning">{i18n.t('panelStudioProviderUnsupportedNotice', { provider: provider ? providerLabel(i18n, provider) : '—' })}</Notice>
+            )}
+            {/* Read-only - this Studio always follows the trader's real, active AI Assistant
+                engine (Keys tab), never a second independent selection. See the provider-state
+                comment above generate(). */}
+            <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 10 }}>
+              <Chip tone="neutral">{provider ? providerLabel(i18n, provider) : '—'}</Chip>
               <span style={{ flex: 1 }} />
-              <span dir="ltr" style={{ font: 'var(--type-caption)', color: 'var(--text-dim)' }}>{(engineInfo && engineInfo.model) || model}</span>
+              <span dir="ltr" style={{ font: 'var(--type-caption)', color: 'var(--text-dim)' }}>{(engineInfo && engineInfo.model) || model || '—'}</span>
             </div>
 
             <textarea
               rows={3} value={prompt} onChange={(e) => setPrompt(e.target.value.slice(0, PANEL_STUDIO_MAX_PROMPT_CHARS))}
-              placeholder={i18n.t('panelStudioPromptPlaceholder')} disabled={isStreaming}
+              placeholder={i18n.t('panelStudioPromptPlaceholder')} disabled={isStreaming || !providerSupported}
               style={{ resize: 'vertical', boxSizing: 'border-box', padding: 13, borderRadius: 10, border: '1px solid var(--border-gold)', background: 'rgba(3,8,7,.55)', color: 'var(--text-primary)', font: 'var(--type-body)', outline: 'none' }}
             />
             <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
@@ -1459,7 +1484,7 @@ function PanelBuilderTab({ i18n, character, entitled }) {
               <span style={{ flex: 1 }} />
               {isStreaming
                 ? <Button variant="danger" size="sm" icon="close" onClick={cancelGenerate}>{i18n.t('panelStudioCancel')}</Button>
-                : <Button variant="primary" size="sm" icon="sparkle" disabled={!prompt.trim()} onClick={generate}>{i18n.t('panelStudioGenerate')}</Button>}
+                : <Button variant="primary" size="sm" icon="sparkle" disabled={!prompt.trim() || !providerSupported} onClick={generate}>{i18n.t('panelStudioGenerate')}</Button>}
             </div>
 
             {stage === 'validating' && <Notice tone="info" icon="loader-circle">{i18n.t('panelStudioValidating')}</Notice>}
@@ -1540,9 +1565,10 @@ function PanelBuilderTab({ i18n, character, entitled }) {
           <Panel variant="base" padding={0}>
             <PanelHeader icon="eye" title={i18n.t('panelStudioPreview')} />
             <div style={{ padding: 14, display: 'flex', flexDirection: 'column', gap: 12 }}>
-              {(editMode ? (previewingEdit ? editedSource : '') : displaySource)
-                ? <SandboxedDashboardPanel source={editMode ? (previewingEdit ? editedSource : '') : displaySource} snapshotRef={snapshotRef} title={(detail && detail.artifact.title) || i18n.t('aiBuilderTitle')} pulse={0} />
-                : <span style={{ font: 'var(--type-caption)', color: 'var(--text-muted)' }}>{i18n.t('panelStudioNoPreviewYet')}</span>}
+              {previewSource
+                ? <SandboxedDashboardPanel source={previewSource} snapshotRef={snapshotRef} title={(detail && detail.artifact.title) || i18n.t('aiBuilderTitle')} pulse={pulse} />
+                : <span style={{ font: 'var(--type-caption)', color: 'var(--text-muted)' }}>{isStreaming ? i18n.t('panelStudioPreviewWaitingForValidation') : i18n.t('panelStudioNoPreviewYet')}</span>}
+              {applyErrorMsg && <Notice tone="danger">{applyErrorMsg}</Notice>}
               <Button
                 variant="primary" icon="plus" disabled={!currentRevision || !viewedRevision || applying || (detail && detail.artifact.status === 'archived')}
                 onClick={applyToDashboard}

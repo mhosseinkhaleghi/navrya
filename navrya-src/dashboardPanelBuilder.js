@@ -13,7 +13,8 @@
 // can be imported by that deliberately DB-free, JSX-free gateway process with zero transform.
 // parseGeneration()/UNAVAILABLE_MARKER/byteLength()/MAX_SOURCE_BYTES are the authoritative
 // persist-gate, also enforced server-side, never trusted from client self-report.
-import { BRIDGE_VERSION, MAX_SOURCE_BYTES_HINT } from './dashboardPanelBridgeDoc.js';
+import { BRIDGE_VERSION, MAX_SOURCE_BYTES_HINT, DASHBOARD_PANEL_BIND_SCHEMA } from './dashboardPanelBridgeDoc.js';
+import { ALLOWED_TAGS } from './panelSafeRender.js';
 
 // The one marker the model must emit instead of fabricating a panel it cannot honestly build from
 // the data this sandbox actually exposes. Checked before anything else in parseGeneration(), so a
@@ -31,40 +32,63 @@ export { BRIDGE_VERSION };
 const LANG_NAME = { fa: 'Persian', ar: 'Arabic', en: 'English', es: 'Spanish' };
 
 // The full contract handed to the model. Every constraint here is a real property of
-// dashboardPanelSandbox.jsx, not a stylistic preference - the sandbox genuinely has no network,
-// genuinely has no framework, and genuinely exposes only these four getters.
+// dashboardPanelSandbox.jsx/panelSafeRender.js, not a stylistic preference - the render surface
+// genuinely allows no scripting, and genuinely exposes only the bind paths listed below.
+//
+// v2: the model no longer writes code that CALLS a bridge - it writes plain, static markup with
+// `data-navrya-bind`/`data-navrya-each` attributes, and the app substitutes real values into it.
+// This is not a stylistic simplification: a generated panel that could execute its own script
+// could never be proven safe against exfiltrating whatever real data it had already been handed
+// (self-navigation cannot be blocked from inside a script-capable frame - see
+// dashboardPanelSandbox.jsx's own header comment) - so script execution and real data access are
+// mutually exclusive in this app now, by design, not by a rule the model is merely asked to follow.
 export function buildGenerationPrompt({ prompt, lang, previousSource }) {
   const language = LANG_NAME[lang] || 'English';
+  const tagList = Array.from(ALLOWED_TAGS).sort().join(', ');
+  const scalarLines = DASHBOARD_PANEL_BIND_SCHEMA.scalars.map((p) => '    data-navrya-bind="' + p + '"');
+  const eachLines = Object.keys(DASHBOARD_PANEL_BIND_SCHEMA.lists).map((path) => {
+    const fields = DASHBOARD_PANEL_BIND_SCHEMA.lists[path].itemFields;
+    return '    data-navrya-each="' + path + '" - each row then binds (relative to the item): ' + fields.join(', ');
+  });
   const lines = [
     'You are generating ONE self-contained panel for a trading-journal "Dashboard" home screen.',
     '',
     'OUTPUT: a single HTML fragment and nothing else - no markdown fences, no explanation, no',
-    '<html>/<head>/<body> wrapper. It may contain <style> and <script> tags. Render your UI into',
-    "document.getElementById('navrya-panel-root').",
+    '<html>/<head>/<body> wrapper, and NO <script> tag of any kind. This is inserted directly as',
+    'markup into the page - you are writing display markup, never code, and there is no way for',
+    'anything you write to execute.',
     '',
-    'RUNTIME (all of this is strictly enforced, not advice):',
-    '- Your code runs inside a sandboxed iframe with NO network access whatsoever. fetch, XHR,',
-    '  WebSocket, and every remote script/stylesheet/font/image are blocked by CSP. Never reference',
-    '  a CDN, a URL, or any external resource.',
-    '- No frameworks or libraries are available. Plain DOM APIs and inline CSS only.',
-    '- The ONLY data source is the async `navrya` bridge (version ' + BRIDGE_VERSION + '), already defined:',
-    '    navrya.getTradeSummary()    -> {totalTrades,openCount}',
-    '    navrya.getOpenPositions()   -> [{id,instrument,side,status,entry,stop,target}]',
-    '    navrya.getPatternStats()    -> [{id,title,occurrenceRate,detectionCount}]',
-    '    navrya.getPsychologyMirror()-> {tags:[{tag,sampleSize,winRate}]} or null when unavailable',
-    '    navrya.onUpdate(fn)         -> fn runs again whenever the trader\'s data changes',
-    '  Every one of these is READ-ONLY. There is no way to write, log, edit or delete anything, and',
-    '  there is no way to read the trader\'s identity, email, API keys, sessions, or wallet balance -',
-    '  those are never sent into this sandbox at all.',
+    'RUNTIME (all of this is strictly enforced by the app, not advice you are expected to follow',
+    'voluntarily - anything outside it is silently removed before this fragment is ever shown):',
+    '- NO scripting of any kind (version ' + BRIDGE_VERSION + ' of this environment has none at all): no <script>, no',
+    '  inline event handler (onclick, onload, ...), no <meta>, <form>, <iframe>, <object>, <embed>,',
+    '  <link>, <style> block, or <a> link. No network access, no CDN, no external resource of any',
+    '  kind - the only image source allowed is an embedded data:image/(png|jpeg|gif|webp) URI.',
+    '- Allowed elements only: ' + tagList + '. Allowed attributes: class, style (no url()/@import),',
+    '  title, data-navrya-bind, data-navrya-each (td/th also allow colspan/rowspan(/scope); img',
+    '  also allows alt).',
+    '- The ONLY way to show a REAL, live value is `data-navrya-bind="<path>"` on one of the allowed',
+    '  elements - its text content is replaced with the real current value. Every legal path:',
+    ...scalarLines,
+    '  A path outside this exact list always renders empty - never invent one.',
+    '- To show a REAL LIST, put `data-navrya-each="<path>"` on a container element (e.g. <ul> or a',
+    '  <tbody>) with exactly ONE child element as the row template - that one child is repeated once',
+    '  per real item, with data-navrya-bind inside it resolved against THAT item. Every legal list:',
+    ...eachLines,
+    '  A list not in this exact list always renders as an empty container.',
+    '- There is no way to write, log, edit or delete anything, and no way to read the trader\'s',
+    '  identity, email, API keys, sessions, or wallet balance - those are never sent into this',
+    '  environment at all.',
     '- There is NO price or candle data, NO computed indicator values, NO news feed, and NO access',
     '  to any other website or service. Those simply do not exist in this environment.',
     '- Theme with these CSS variables so the panel looks native: --char-accent, --text-primary,',
     '  --text-muted, --text-dim, --border-gold, --border-hairline, --success, --danger. Dark, compact,',
     '  12px base text.',
-    '- Write all user-visible text in ' + language + '.',
+    '- Write all user-visible text (labels, headings, empty-state copy) in ' + language + '.',
     '- The entire fragment must stay under ' + MAX_SOURCE_BYTES_HINT + '.',
-    '- Never invent or placeholder a number. When the bridge returns nothing (empty array or null),',
-    '  render an honest empty state saying there is no data yet - never a fabricated example value.',
+    '- Never invent or placeholder a number in your own static text. Only data-navrya-bind ever',
+    '  shows a real number - write its surrounding label so an empty/zero bound value still reads',
+    '  sensibly, since you cannot know its value at generation time.',
     '',
     'HONESTY RULE: if the request fundamentally needs data this environment does not have - live',
     'prices, candles, account balances, wallet data, another trader\'s identity, or another site\'s',

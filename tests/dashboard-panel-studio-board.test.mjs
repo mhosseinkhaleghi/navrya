@@ -53,10 +53,15 @@ test('ArtifactPanelSlot fetches through the canonical Panel Studio API, never in
   assert.doesNotMatch(fn[0], /dangerouslySetInnerHTML/);
   assert.doesNotMatch(fn[0], /\beval\(/);
   assert.doesNotMatch(fn[0], /localStorage|setPref\(/, 'a dashboard render must never write board/preference state as a side effect of merely displaying a panel');
-  assert.match(fn[0], /<SandboxedDashboardPanel source=\{record\.source\} snapshotRef=\{snapshotRef\} title=\{entry\.title\} pulse=\{0\} \/>/);
+  // pulse/snapshotRef come from useDashboardBridgeSnapshot(character) - the same live-refresh hook
+  // the Studio's own preview column uses - not a hardcoded pulse={0}/one-shot ref, so an applied
+  // board panel's data updates on real trade/pattern/psychology-education changes instead of
+  // freezing at first mount.
+  assert.match(fn[0], /const \{ snapshotRef, pulse \} = useDashboardBridgeSnapshot\(character\);/);
+  assert.match(fn[0], /<SandboxedDashboardPanel source=\{record\.source\} snapshotRef=\{snapshotRef\} title=\{entry\.title\} pulse=\{pulse\} \/>/);
 });
 
 test('dashboardView.jsx imports the sandbox runtime from its own independent module, never from analysisWorkspacePanelRuntime.jsx', () => {
-  assert.match(text, /import \{ SandboxedDashboardPanel, buildDashboardBridgeSnapshot \} from '\.\/dashboardPanelSandbox\.jsx';/);
+  assert.match(text, /import \{ SandboxedDashboardPanel, useDashboardBridgeSnapshot \} from '\.\/dashboardPanelSandbox\.jsx';/);
   assert.doesNotMatch(text, /analysisWorkspacePanelRuntime/);
 });

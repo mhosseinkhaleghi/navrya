@@ -14,7 +14,7 @@ import { RoutineTab } from './routineTab.jsx';
 import { CalmRoomPanel } from './moodTab.jsx';
 import { DashboardScenarioRow } from './liveSessionView.jsx';
 import { openLiveSession } from './liveSessionSignal.js';
-import { SandboxedDashboardPanel, buildDashboardBridgeSnapshot } from './dashboardPanelSandbox.jsx';
+import { SandboxedDashboardPanel, useDashboardBridgeSnapshot } from './dashboardPanelSandbox.jsx';
 
 // ============================================================================
 // Redesign of the Dashboard (Session tools' home screen) against the design handoff
@@ -990,9 +990,9 @@ export function addArtifactPanel(character, artifactId, title, revisionId) {
 // [artifactId, revisionId] (the applied revision's own id is an immutable version key, so there
 // is nothing to re-fetch on unless a newer revision is applied), finds the one this board slot
 // names, and renders it through the same sandbox runtime the Studio's own preview uses -
-// never a second, weaker rendering path. `character` feeds a fresh, synchronous, read-only
-// snapshot (navrya-src/dashboardPanelSandbox.jsx's own buildDashboardBridgeSnapshot) into a ref,
-// exactly like the Studio's own preview column.
+// never a second, weaker rendering path. `character` feeds useDashboardBridgeSnapshot, the same
+// hook the Studio's own preview column uses, so an applied board panel's data stays live (refreshed
+// + pulsed on real trade/pattern/psychology store changes) instead of being frozen at first mount.
 function ArtifactPanelSlot({ entry, character }) {
   const [record, setRecord] = React.useState(null);
   const [missing, setMissing] = React.useState(false);
@@ -1011,12 +1011,11 @@ function ArtifactPanelSlot({ entry, character }) {
     return () => { cancelled = true; };
   }, [entry.artifactId, entry.revisionId]);
 
-  const snapshotRef = React.useRef(null);
-  if (snapshotRef.current === null) snapshotRef.current = buildDashboardBridgeSnapshot(character);
+  const { snapshotRef, pulse } = useDashboardBridgeSnapshot(character);
 
   if (missing) return <p style={{ margin: 0, font: 'var(--type-body)', color: 'var(--text-dim)' }}>—</p>;
   if (!record) return <p style={{ margin: 0, font: 'var(--type-body)', color: 'var(--text-muted)' }}>…</p>;
-  return <SandboxedDashboardPanel source={record.source} snapshotRef={snapshotRef} title={entry.title} pulse={0} />;
+  return <SandboxedDashboardPanel source={record.source} snapshotRef={snapshotRef} title={entry.title} pulse={pulse} />;
 }
 
 function panelBody(id, ctx) {

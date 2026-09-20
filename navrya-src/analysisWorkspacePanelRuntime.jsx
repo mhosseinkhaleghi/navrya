@@ -1,36 +1,76 @@
 import React from 'react';
-import { BRIDGE_VERSION } from './analysisWorkspaceBridgeDoc.js';
+import { BRIDGE_VERSION, ANALYSIS_WORKSPACE_BIND_SCHEMA } from './analysisWorkspaceBridgeDoc.js';
+import { renderPanelSafely, sanitizePanelFragment } from './panelSafeRender.js';
 
 // ============================================================================
-// Sandboxed runtime for AI-authored Analysis Workspace panels (Phase 2).
+// Render surface for AI-authored Analysis Workspace panels (Phase 2).
 //
-// The whole security model in one place, because this is the file that decides how much damage a
-// generated panel can do:
+// SECURITY REDESIGN (v2) - read this before touching anything below.
 //
-//  1. The panel runs in an <iframe sandbox="allow-scripts"> with NO allow-same-origin. That gives
-//     it an opaque origin: it cannot touch this document, its DOM, its cookies, its localStorage,
-//     or any auth token. Generated code is NEVER evaluated in the app's own realm - there is no
-//     eval()/new Function()/dangerouslySetInnerHTML path for it anywhere in this app.
-//  2. The document it runs in carries a strict CSP that blocks ALL network access
-//     (default-src 'none', no connect-src). A panel is handed real session data, so it must not be
-//     able to send that data anywhere. No fetch, no XHR, no WebSocket, no beacon, no remote image,
-//     no third-party script. This is also why a generated panel can never pull a chart library or
-//     a live price feed off a CDN - a deliberate, documented trade-off, not an oversight.
-//  3. The only channel is postMessage, and it is READ-ONLY by construction: the parent answers a
-//     fixed list of getter methods and nothing else. There is no write/mutate method in the
-//     protocol, so a panel cannot log a trade, edit a scenario, or change a session.
-//  4. The parent authenticates messages by object identity (event.source === the iframe's own
-//     contentWindow), not by origin - a sandboxed opaque origin reports itself as "null", so the
-//     origin string is worthless here and the window reference is the real check.
+// The original (v1) design let a generated panel run real <script> inside a
+// sandbox="allow-scripts" iframe and call a live `navrya.getX()` bridge API for real session data
+// from that script - hardened, across two review passes, with an opaque origin, a strict CSP, a
+// MessageChannel-based transport (instead of bare postMessage), and a navigation guard that
+// stopped a panel the instant it self-navigated a second time.
 //
-// Protocol version is explicit so a stored panel written against v1 keeps working when a later
-// version adds methods. It lives in analysisWorkspaceBridgeDoc.js because the prompt builder needs
-// the same number, and that file has to stay plain JS for the unit tests.
+// A further security review found that hardening was still not sufficient, and could not be made
+// sufficient by hardening the TRANSPORT any further. The problem is not how the bridge answers a
+// request - it is that a sandbox="allow-scripts" browsing context can ALWAYS navigate itself to an
+// arbitrary URL. The `sandbox` attribute only ever restricts navigating OTHER browsing contexts;
+// self-navigation is permitted by design, and no shipped CSP directive blocks it (the draft
+// `navigate-to` has no real browser implementation to rely on). Once a panel has real data in its
+// own script scope - however it got there, including by reading it back out of its own DOM after
+// the parent wrote it there, which no transport hardening touches at all - nothing on the client
+// can prove it will never carry that data along its own outbound navigation (in the URL, in a form
+// POST, ...). This is a structural limitation of running attacker-influenced script in a browser at
+// all, not a gap in any one implementation detail, and it cannot be closed by a better transport.
+//
+// The fix actually applied: a generated panel never receives BOTH script execution AND real data,
+// ever, full stop.
+//
+//   1. The model's raw HTML fragment is parsed and rebuilt from an explicit tag/attribute
+//      allowlist by navrya-src/panelSafeRender.js - <script>, <meta>, <form>, <iframe>, <object>,
+//      <embed>, <link>, every `on*` handler, every `javascript:`/`vbscript:` URL, and every
+//      non-`data:` image source are simply not in the allowlist, so they never reach the output.
+//   2. Real data is never interpolated as HTML or into an attribute. The only way a panel displays
+//      a live value is a `data-navrya-bind="<allowed.path>"` attribute, resolved against
+//      ANALYSIS_WORKSPACE_BIND_SCHEMA (an explicit, fixed list of legal paths - never a generic
+//      object walk) and written ONLY as escaped text content, discarding whatever the model's own
+//      markup put there.
+//   3. The resulting, already-safe document is rendered in an iframe with `sandbox="allow-same-
+//      origin"` and deliberately NO `allow-scripts` - a hard platform guarantee, independent of
+//      panelSafeRender.js's own correctness, that nothing in the document can execute code at all.
+//      (allow-same-origin without allow-scripts is safe: same-origin access is only exploitable by
+//      script, and there is none. It is also what lets this component read the frame's real
+//      content height directly, with no postMessage bridge needed for that either.)
+//
+// With no script capability, self-navigation is not discouraged, it is impossible - there is no
+// code left in the document able to call `location.href`/`location.replace`/`window.open`. Static,
+// script-free navigation primitives (`<meta http-equiv="refresh">`, `<form action>`) are separately
+// removed by the allowlist above too, as defense in depth, independent of whatever the `sandbox`
+// attribute does or does not do to them on its own - see panelSafeRender.js's header comment and
+// tests/panel-safe-render.test.mjs's hostile-input suite (location.href, location.replace, meta
+// refresh, form submission, image/CSS beacons, and a request-then-navigate sequence proven
+// structurally impossible, not merely slow) for the actual, dynamic proof this holds.
+//
+// Honest trade-off: a panel can no longer run its own script - no custom interactivity, no
+// client-computed values, no `navrya.onUpdate()` callback. It is a live, reactively re-rendered
+// data DISPLAY, not a live program. See docs/ai/panel-studio.md for the full writeup of why this,
+// and not a harder-to-bypass sandbox, is the only architecture that keeps real live data in a
+// generated panel while actually closing the exfiltration path - not merely reducing it.
+//
+// The identical redesign was applied, at the same time, to the newer Dashboard Panel Studio
+// sandbox (navrya-src/dashboardPanelSandbox.jsx) - both share panelSafeRender.js's sanitizer/binder
+// (new, generic, security-critical infrastructure with no per-target behavior of its own - one
+// well-tested implementation, not two that could quietly drift apart) while keeping their own React
+// runtime components independent, per the pre-existing precedent (this file's own test,
+// tests/analysis-workspace-panel.test.mjs, still asserts literal properties of THIS file's source).
 // ============================================================================
 export { BRIDGE_VERSION };
 
-// Every method a panel may call. Adding to this list widens what generated code can see, so it is
-// deliberately a short, reviewed allowlist - and every one of them is a getter.
+// The data categories an Analysis Workspace fragment may bind to - the root paths
+// ANALYSIS_WORKSPACE_BIND_SCHEMA actually allows, kept here too as a short, reviewed,
+// human-readable list (mirrors the pre-v2 callable-getter names, now bind-path roots instead).
 export const BRIDGE_METHODS = ['context', 'entries', 'scenarios', 'positions', 'chart'];
 
 // Builds the plain, serializable snapshot handed across the bridge. Deliberately narrow: real
@@ -77,79 +117,49 @@ export function buildSnapshot(ws) {
     entries: entries,
     scenarios: scenarios,
     positions: positions,
-    // The chart the session is actually on. A panel can render its own TradingView embed from
-    // this - but only by asking the HOST to do it (see 'chart' below): the sandbox's own CSP
-    // blocks every remote script, including TradingView's, by design.
+    // The chart the session is actually on. A panel can only ever display these facts as text - it
+    // has no way to embed a live chart itself (no script, no network access either way).
     chart: {
       symbol: session.instrument || null, interval: session.timeframe || null,
       embeddable: false,
-      note: 'The sandbox blocks all network access, so a panel cannot embed a live chart itself.'
+      note: 'This panel has no script execution and no network access, so it cannot embed a live chart itself.'
     }
   };
 }
 
-// The document a generated panel runs inside. The generated fragment is inserted as real HTML
-// (not as a JS string), so its own <style>/<script> tags work exactly like a normal page and there
-// is no "</script> breaks out of the wrapper" escaping hazard to get wrong.
-//
-// The CSP below cannot be loosened by anything the fragment adds: additional policies can only
-// ever intersect, never widen, an existing one.
-function panelDocument(source, theme) {
+// The document a generated panel renders inside. `safeBody` is already fully sanitized AND
+// data-bound HTML by the time it reaches this function (see buildSafeBody below) - this function
+// only ever wraps it, never touches its own content. No <script> tag exists anywhere in this
+// document; there is nothing left in it capable of executing code, by construction.
+function panelDocument(safeBody, theme) {
   return '<!doctype html><html><head><meta charset="utf-8">'
-    + '<meta http-equiv="Content-Security-Policy" content="default-src \'none\'; img-src data:; style-src \'unsafe-inline\'; script-src \'unsafe-inline\'; font-src data:;">'
+    + '<meta http-equiv="Content-Security-Policy" content="default-src \'none\'; img-src data:; style-src \'unsafe-inline\'; font-src data:; form-action \'none\'; base-uri \'none\'; script-src \'none\';">'
     + '<style>'
     + ':root{color-scheme:dark;' + theme + '}'
     + '*{box-sizing:border-box}'
     + 'html,body{margin:0;padding:0;background:transparent;color:var(--text-primary);'
     + 'font:12px/1.7 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif}'
     + '#navrya-panel-root{padding:12px}'
-    + 'a{color:var(--char-accent)}'
-    + '</style></head><body><div id="navrya-panel-root"></div>'
-    + '<script>' + BRIDGE_CLIENT + '</script>'
-    + '<div id="navrya-panel-body">' + source + '</div>'
-    + '</body></html>';
+    + '</style></head><body><div id="navrya-panel-root">'
+    + safeBody
+    + '</div></body></html>';
 }
 
-// Injected into every panel document, before the generated code, as the `navrya` global. Promise
-// based, one in-flight map, and it reports its own height and any uncaught error back to the host
-// so a broken generated panel shows an honest error strip instead of a blank box.
-const BRIDGE_CLIENT = [
-  '(function(){',
-  'var seq=0,pending={};',
-  'function call(method){return new Promise(function(resolve,reject){',
-  ' var id=++seq;pending[id]={resolve:resolve,reject:reject};',
-  ' parent.postMessage({__navryaPanel:1,type:"request",id:id,method:method},"*");',
-  ' setTimeout(function(){if(pending[id]){delete pending[id];reject(new Error("navrya bridge timeout"))}},8000);',
-  '})}',
-  'var listeners=[];',
-  'window.addEventListener("message",function(ev){',
-  ' var d=ev.data;if(!d||d.__navryaPanel!==1)return;',
-  ' if(d.type==="response"&&pending[d.id]){var p=pending[d.id];delete pending[d.id];',
-  '  if(d.ok)p.resolve(d.data);else p.reject(new Error(d.error||"navrya bridge error"))}',
-  ' if(d.type==="update"){listeners.forEach(function(fn){try{fn(d.data)}catch(e){}})}',
-  '});',
-  'window.navrya={version:' + BRIDGE_VERSION + ',',
-  ' getContext:function(){return call("context")},',
-  ' getEntries:function(){return call("entries")},',
-  ' getScenarios:function(){return call("scenarios")},',
-  ' getPositions:function(){return call("positions")},',
-  ' getChart:function(){return call("chart")},',
-  ' onUpdate:function(fn){if(typeof fn==="function")listeners.push(fn)},',
-  ' root:function(){return document.getElementById("navrya-panel-root")}',
-  '};',
-  'var lastH=0;',
-  'function reportHeight(){var h=Math.max(document.documentElement.scrollHeight,document.body.scrollHeight);',
-  ' if(Math.abs(h-lastH)<2)return;lastH=h;',
-  ' parent.postMessage({__navryaPanel:1,type:"height",value:h},"*")}',
-  'window.addEventListener("load",reportHeight);',
-  'if(typeof ResizeObserver==="function"){try{new ResizeObserver(reportHeight).observe(document.documentElement)}catch(e){}}',
-  'setInterval(reportHeight,2000);',
-  'window.addEventListener("error",function(e){',
-  ' parent.postMessage({__navryaPanel:1,type:"panel-error",message:String(e&&e.message||"error")},"*")});',
-  'window.addEventListener("unhandledrejection",function(e){',
-  ' parent.postMessage({__navryaPanel:1,type:"panel-error",message:String((e&&e.reason&&e.reason.message)||"rejection")},"*")});',
-  '}());'
-].join('');
+// Sanitizes (and, when a real snapshot is available, binds) the model's raw fragment. Wrapped in a
+// try/catch purely as a defensive last resort - panelSafeRender.js is designed to fail closed on
+// its own (a rejected element/attribute/path renders as nothing, never throws), so `failed` should
+// never actually come back true, but a generated-content pipeline must never let any single
+// malformed input crash the whole Analysis Workspace render.
+function buildSafeBody(source, snapshot) {
+  try {
+    const html = snapshot
+      ? renderPanelSafely(source || '', snapshot, ANALYSIS_WORKSPACE_BIND_SCHEMA)
+      : sanitizePanelFragment(source || '');
+    return { html, failed: false };
+  } catch (_) {
+    return { html: '', failed: true };
+  }
+}
 
 // CSS custom properties forwarded into the sandbox so a generated panel can look native without
 // being able to read anything else about the host page.
@@ -166,69 +176,68 @@ function themeVars() {
   ].join('');
 }
 
-// One sandboxed panel. `snapshotRef` is a ref, not a prop value, so the bridge always answers with
-// the CURRENT session state without this component having to re-render (and therefore reload the
-// iframe, which would throw away whatever the panel had drawn) on every 1s session tick.
+// One sandboxed panel. `snapshotRef` is a ref, not a prop value, so an unrelated re-render (the
+// session's own 1s tick) never rebuilds the document by itself - only a real `source`/`pulse`
+// change does.
 export function SandboxedPanel({ source, snapshotRef, title, lang, pulse, onError }) {
   const frameRef = React.useRef(null);
   const [height, setHeight] = React.useState(160);
   const [failure, setFailure] = React.useState('');
 
-  // navrya.onUpdate(): pushed only when `pulse` says something a panel could care about actually
-  // changed (an entry/scenario added, the selection moved) - never on the host's own 1s clock tick,
-  // which would wake every panel once a second for nothing.
-  React.useEffect(() => {
-    const frame = frameRef.current;
-    if (!frame || !frame.contentWindow) return;
-    frame.contentWindow.postMessage({ __navryaPanel: 1, type: 'update', data: snapshotRef.current || {} }, '*');
-  }, [pulse, snapshotRef]);
-
-  React.useEffect(() => {
-    function onMessage(event) {
-      const frame = frameRef.current;
-      // Identity check, not origin: a sandboxed opaque origin always reports "null".
-      if (!frame || event.source !== frame.contentWindow) return;
-      const data = event.data;
-      if (!data || data.__navryaPanel !== 1) return;
-      if (data.type === 'height') {
-        const next = Math.max(80, Math.min(900, Number(data.value) || 160));
-        setHeight((prev) => (Math.abs(prev - next) > 2 ? next : prev));
-        return;
-      }
-      if (data.type === 'panel-error') {
-        setFailure(String(data.message || '').slice(0, 200));
-        if (onError) onError(String(data.message || ''));
-        return;
-      }
-      if (data.type === 'request') {
-        const method = String(data.method || '');
-        const snapshot = snapshotRef.current || {};
-        const ok = BRIDGE_METHODS.indexOf(method) > -1;
-        frame.contentWindow.postMessage({
-          __navryaPanel: 1, type: 'response', id: data.id, ok: ok,
-          data: ok ? snapshot[method] : undefined,
-          error: ok ? undefined : 'UNKNOWN_METHOD'
-        }, '*');
-      }
-    }
-    window.addEventListener('message', onMessage);
-    return () => window.removeEventListener('message', onMessage);
-  }, [onError, snapshotRef]);
-
-  // The document is built once per source change - never per render - so a panel keeps its own
-  // drawn state across the session's own 1s re-render tick. The theme is part of the key rather
-  // than read inside the memo: computed once and ignored afterwards, a panel built under one
-  // character's accent kept that accent after a character/theme change until its source happened
-  // to be edited.
   const theme = themeVars();
-  const doc = React.useMemo(() => panelDocument(source || '', theme), [source, theme]);
+  const { html: safeBody, failed: safeBodyFailed } = React.useMemo(
+    () => buildSafeBody(source, snapshotRef ? snapshotRef.current : null),
+    [source, snapshotRef, pulse] // eslint-disable-line react-hooks/exhaustive-deps
+  );
+  const doc = React.useMemo(() => panelDocument(safeBody, theme), [safeBody, theme]);
+
+  React.useEffect(() => {
+    if (!safeBodyFailed) return;
+    setFailure('panel could not be rendered safely');
+    if (onError) onError('render-failed');
+  }, [safeBodyFailed, onError]);
+
+  // No script runs inside this document, so there is no live postMessage telemetry to listen for -
+  // the parent measures the frame directly instead. `allow-same-origin` (with NO allow-scripts) is
+  // what makes this legal: same-origin DOM access is only a risk when paired with script execution
+  // inside the frame, and there is none.
+  function measure() {
+    const frame = frameRef.current;
+    try {
+      const cdoc = frame && frame.contentDocument;
+      if (!cdoc || !cdoc.documentElement) return;
+      const raw = Math.max(cdoc.documentElement.scrollHeight || 0, cdoc.body ? cdoc.body.scrollHeight : 0);
+      const next = Math.max(80, Math.min(900, raw || 160));
+      setHeight((prev) => (Math.abs(prev - next) > 2 ? next : prev));
+    } catch (_) {
+      // Cross-origin or not-yet-attached - the next load/resize pass retries.
+    }
+  }
+
+  const resizeObserverRef = React.useRef(null);
+  function handleFrameLoad() {
+    if (!safeBodyFailed) setFailure('');
+    measure();
+    if (resizeObserverRef.current) { resizeObserverRef.current.disconnect(); resizeObserverRef.current = null; }
+    try {
+      const cdoc = frameRef.current && frameRef.current.contentDocument;
+      if (cdoc && cdoc.documentElement && typeof ResizeObserver === 'function') {
+        const observer = new ResizeObserver(measure);
+        observer.observe(cdoc.documentElement);
+        resizeObserverRef.current = observer;
+      }
+    } catch (_) {
+      // Best-effort only - a missing ResizeObserver never blocks the panel from rendering.
+    }
+  }
+  React.useEffect(() => () => { if (resizeObserverRef.current) resizeObserverRef.current.disconnect(); }, []);
 
   return (
     <div style={{ borderRadius: 12, border: '1px solid var(--border-gold)', background: 'var(--surface-800, rgba(11,20,21,.6))', overflow: 'hidden' }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 12px', borderBottom: '1px solid var(--border-hairline)' }}>
         <span style={{ width: 6, height: 6, borderRadius: '50%', background: 'var(--char-accent)', flex: 'none' }} />
         <span dir="auto" style={{ fontSize: 12, fontWeight: 600, color: 'var(--text-primary)', flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{title}</span>
-        <span style={{ fontSize: 9, letterSpacing: '.08em', color: 'var(--text-dim)', flex: 'none' }}>AI · SANDBOX</span>
+        <span style={{ fontSize: 9, letterSpacing: '.08em', color: 'var(--text-dim)', flex: 'none' }}>AI · SAFE RENDER</span>
       </div>
       {failure && (
         <div dir="auto" style={{ padding: '8px 12px', fontSize: 11, color: 'var(--danger)', borderBottom: '1px solid var(--border-hairline)', background: 'rgba(231,76,60,.08)' }}>
@@ -236,8 +245,8 @@ export function SandboxedPanel({ source, snapshotRef, title, lang, pulse, onErro
         </div>
       )}
       <iframe
-        ref={frameRef} title={title || 'panel'} srcDoc={doc} sandbox="allow-scripts"
-        referrerPolicy="no-referrer" loading="lazy"
+        ref={frameRef} title={title || 'panel'} srcDoc={doc} sandbox="allow-same-origin"
+        referrerPolicy="no-referrer" loading="lazy" onLoad={handleFrameLoad}
         style={{ display: 'block', width: '100%', height: height, border: 0, background: 'transparent' }}
       />
     </div>
