@@ -3,22 +3,23 @@ import { readFile } from 'node:fs/promises';
 import path from 'node:path';
 import test from 'node:test';
 
-// Regression test for a real production incident: analysisProfilesView.jsx referenced
-// SPECIAL_STYLE_IDS (a SetupTab filter constant) without ever importing or declaring it - the
-// constant existed only as an unexported top-level const in analysisProfileOnboarding.jsx. Because
-// every test for these .jsx files is static-source (no JSX transform in `node --test`, per this
-// repo's own convention - see tests/analysis-profile-onboarding.test.mjs's header), nothing ever
-// actually EXECUTED the SetupTab render, so the `ReferenceError: SPECIAL_STYLE_IDS is not defined`
-// shipped silently through every prior phase's test run and only surfaced once a real user opened
-// the Strategies hub in a real browser, live in production.
+// Regression test for two real, back-to-back production incidents on the same file pair: opening
+// the Strategies hub's Analysis Profile Setup tab threw "SPECIAL_STYLE_IDS is not defined", and
+// once that shipped, its very next real-browser check threw "FocusChip is not defined" - both were
+// pieces of analysisProfileOnboarding.jsx (a constant, then a component) that analysisProfilesView
+// .jsx's inline SetupTab reused by copying the wizard's JSX without importing what it borrowed.
+// Because every test for these .jsx files is static-source (no JSX transform in `node --test`, per
+// this repo's own convention - see tests/analysis-profile-onboarding.test.mjs's header), nothing
+// ever actually EXECUTED the SetupTab render, so neither ReferenceError was caught until a real
+// user opened the page in a real browser, live in production, twice in a row.
 //
-// This file closes that specific blind spot for the whole Analysis Profile domain: for each listed
-// file, every bare ALL_CAPS/CONSTANT_CASE identifier used as real code (not inside a string, a
-// comment, a regex literal, or after a `.` - i.e. not a property access) must be either imported or
-// declared (const/let/var/function/class, including destructuring) in that same file. It is a
-// deliberately narrow lint, not a general one: it catches exactly the shape of bug that just shipped
-// (a shared constant used but never wired up), scoped to files this repo cannot otherwise verify by
-// execution.
+// This file closes that blind spot for the whole Analysis Profile domain with two checks per listed
+// file: (1) every bare ALL_CAPS/CONSTANT_CASE identifier used as real code (not inside a string, a
+// comment, a regex literal, or after a `.` - i.e. not a property access), and (2) every `<Component`
+// JSX tag - must be either imported or declared (const/let/var/function/class, including
+// destructuring) in that same file. Deliberately narrow: it catches exactly the shape of bug that
+// shipped (a name reused across files without being wired up), scoped to files this repo cannot
+// otherwise verify by execution - not a general-purpose linter.
 
 const root = process.cwd();
 const FILES = [
@@ -32,7 +33,8 @@ const KNOWN_GLOBALS = new Set([
   'Map', 'Set', 'RegExp', 'Error', 'Intl', 'URL', 'NaN', 'Infinity', 'CSS'
 ]);
 
-const IDENT_RE = /(?<![.\w])([A-Z][A-Z0-9]*(?:_[A-Z0-9]+)+|[A-Z]{4,})\b/g;
+const CONSTANT_RE = /(?<![.\w])([A-Z][A-Z0-9]*(?:_[A-Z0-9]+)+|[A-Z]{4,})\b/g;
+const JSX_TAG_RE = /<([A-Z][A-Za-z0-9]*)\b/g;
 
 // Blanks out block/line comments and string/template literal bodies (keeping delimiters, so
 // positions still line up), and best-effort blanks a `/regex/` literal when a `/` follows a
@@ -71,9 +73,11 @@ function stripNoise(src) {
   return out;
 }
 
-function undeclaredConstants(source) {
-  const src = stripNoise(source);
+// Every name this file makes available at module scope: imported (named or default), or
+// declared via const/let/var/function/class (including destructuring).
+function declaredNames(src) {
   const known = new Set(KNOWN_GLOBALS);
+  for (const m of src.matchAll(/import\s+([A-Za-z_$][A-Za-z0-9_$]*)\s*(?:,|from)/g)) known.add(m[1]);
   for (const m of src.matchAll(/import\s*\{([^}]*)\}\s*from/g)) {
     for (const part of m[1].split(',')) { const name = part.trim().split(/\s+as\s+/).pop().trim(); if (name) known.add(name); }
   }
@@ -81,7 +85,20 @@ function undeclaredConstants(source) {
   for (const m of src.matchAll(/\b(?:const|let|var)\s*\{([^}]*)\}\s*=/g)) {
     for (const part of m[1].split(',')) { const name = part.trim().split(':')[0].trim(); if (name) known.add(name); }
   }
-  const used = new Set([...src.matchAll(IDENT_RE)].map((m) => m[1]));
+  return known;
+}
+
+function undeclaredConstants(source) {
+  const src = stripNoise(source);
+  const known = declaredNames(src);
+  const used = new Set([...src.matchAll(CONSTANT_RE)].map((m) => m[1]));
+  return [...used].filter((name) => !known.has(name)).sort();
+}
+
+function undeclaredJsxComponents(source) {
+  const src = stripNoise(source);
+  const known = declaredNames(src);
+  const used = new Set([...src.matchAll(JSX_TAG_RE)].map((m) => m[1]));
   return [...used].filter((name) => !known.has(name)).sort();
 }
 
@@ -90,5 +107,11 @@ for (const file of FILES) {
     const source = await readFile(path.join(root, 'navrya-src', file), 'utf8');
     const missing = undeclaredConstants(source);
     assert.deepEqual(missing, [], `${file} references CONSTANT_CASE identifier(s) that are never imported or declared: ${missing.join(', ')}`);
+  });
+
+  test(`${file}: every <Component /> JSX tag is imported or declared in this file`, async () => {
+    const source = await readFile(path.join(root, 'navrya-src', file), 'utf8');
+    const missing = undeclaredJsxComponents(source);
+    assert.deepEqual(missing, [], `${file} uses JSX component(s) that are never imported or declared: ${missing.join(', ')}`);
   });
 }

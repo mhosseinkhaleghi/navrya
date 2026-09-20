@@ -163,7 +163,9 @@ function SelectableCard({ selected, onClick, title, subtitle, icon }) {
   );
 }
 
-function FocusChip({ selected, onClick, label }) {
+// Exported: analysisProfilesView.jsx's inline Setup tab reuses this exact chip for its own
+// secondary-style/focus toggles, and must never keep a second, driftable copy of it.
+export function FocusChip({ selected, onClick, label }) {
   return (
     <button
       type="button" role="checkbox" aria-checked={selected} onClick={onClick}
