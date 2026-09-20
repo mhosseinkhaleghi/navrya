@@ -23,7 +23,7 @@ import test from 'node:test';
 
 const root = process.cwd();
 const FILES = [
-  'analysisProfileOnboarding.jsx', 'analysisProfilesView.jsx', 'analysisProfileConcepts.jsx',
+  'analysisProfileOnboarding.jsx', 'analysisProfileRite.jsx', 'analysisProfilesView.jsx', 'analysisProfileConcepts.jsx',
   'analysisProfileMemory.jsx', 'analysisProfileKnowledge.jsx', 'analysisProfileChat.jsx',
   'analysisProfilePreview.jsx', 'analysisProfileReport.jsx', 'engineLearning.jsx', 'reportCharts.jsx'
 ];

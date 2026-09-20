@@ -9,18 +9,24 @@ import { Icon } from '../public/pages/shared/navrya/components/core/Icon.jsx';
 // file about AI freedom/strictness/creativity; that belongs to a future per-analysis-request
 // feature, never to the Analysis Profile itself (see analysis-context.js's header comment).
 //
-// Reused for two real call sites, both real data flows through window.TradeJournalAnalysisProfile
+// Reused for real call sites, all real data flows through window.TradeJournalAnalysisProfile
 // Store / the two registries, never a local mock:
-//   - mode:'first-run'  - character-app.jsx mounts this once, gated on the user having zero
-//     profiles yet (see that file's own mount() addition).
-//   - mode:'create'/'edit' - analysisProfilesView.jsx's own "New profile"/"Edit" actions.
+//   - mode:'create'/'edit' - analysisProfilesView.jsx's own "New profile"/"Edit" actions (this
+//     modal shell).
+//   - the actual first-run entry point is analysisProfileRite.jsx's full-screen rite, mounted by
+//     character-app.jsx's AnalysisProfileFirstRunGate - not this Modal - but it reuses this file's
+//     own `copy`/style-and-focus-picking conventions rather than keeping a second, driftable copy.
 
-const FEATURED_STYLE_IDS = ['price_action', 'classical_ta', 'smc', 'liquidity_analysis', 'ichimoku', 'wyckoff', 'elliott_wave', 'order_flow'];
+// Exported: analysisProfileRite.jsx's full-screen Lens step renders the exact same featured grid.
+export const FEATURED_STYLE_IDS = ['price_action', 'classical_ta', 'smc', 'liquidity_analysis', 'ichimoku', 'wyckoff', 'elliott_wave', 'order_flow'];
 // Exported: analysisProfilesView.jsx's inline Setup tab filters the same three special ids out of its
 // secondary-style dropdown, and must never keep a second, driftable copy of this list.
 export const SPECIAL_STYLE_IDS = ['general_analysis', 'hybrid', 'custom_method'];
 
-const copy = {
+// Exported: analysisProfileRite.jsx's full-screen rite reuses this exact four-language copy block
+// (merged with its own small set of rite-only keys) rather than forking a second copy of ~150
+// strings that would only drift out of sync with this file's own.
+export const copy = {
   fa: {
     step: 'مرحله {n} از ۲',
     step1Title: 'تو بازار را چطور می‌خوانی؟', step1Subtitle: 'لنزی را انتخاب کن که معمولاً با آن چارت را بررسی می‌کنی.',

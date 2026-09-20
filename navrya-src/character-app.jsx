@@ -29,7 +29,7 @@ import { renderStrategyEducation } from './strategyEducationView.jsx';
 import { renderChatDock } from './chatDockView.jsx';
 import { renderAccountProfile } from './accountProfileView.jsx';
 import { openIntake, INTAKE_ENUM_OPTIONS, SCENARIOS } from './mentalHealthIntakeModal.jsx';
-import { AnalysisProfileOnboarding } from './analysisProfileOnboarding.jsx';
+import { AnalysisProfileRite } from './analysisProfileRite.jsx';
 import { openCalculator } from './tradeCalculatorModal.jsx';
 import { openLogWizard } from './tradeLogModal.jsx';
 import { useAccounts } from './accountsView.jsx';
@@ -434,13 +434,19 @@ function ensureBackgroundLayer(navryaCharacter) {
 }
 
 // Analysis Profiles domain (see ARCHITECTURE.md §7.25). The brief's first-run rule: show the
-// two-step onboarding once, when the user genuinely has zero Analysis Profiles yet, and never
-// again once at least one exists. Deliberately mounted at the user-bootstrap level (this file's
-// own mount(), below) rather than any per-character DOM hack, since Analysis Profiles are
-// user-scoped, not character-scoped - the exact same reasoning Sessions/Patterns/Strategies
-// already follow for their own server-replica.js domains. "Set up later" never leaves the user
-// with zero profiles: it creates the safe General Market Analysis default the brief specifies.
-function AnalysisProfileFirstRunGate({ lang }) {
+// onboarding once, when the user genuinely has zero Analysis Profiles yet, and never again once
+// at least one exists. Deliberately mounted at the user-bootstrap level (this file's own mount(),
+// below) rather than any per-character DOM hack, since Analysis Profiles are user-scoped, not
+// character-scoped - the exact same reasoning Sessions/Patterns/Strategies already follow for
+// their own server-replica.js domains. "Set up later" never leaves the user with zero profiles:
+// it creates the safe General Market Analysis default the brief specifies.
+//
+// Design pass: this first-run entry point is now a full-screen, four-beat "rite"
+// (analysisProfileRite.jsx) rather than the two-step Modal analysisProfilesView.jsx's own
+// New/Edit actions still use - see that file's own header comment. It reuses the modal's exact
+// style/focus-picking data and copy, just presented full-screen with a step timeline and a
+// decorative DNA-helix motif; the underlying two real questions (style, then focus) are unchanged.
+function AnalysisProfileFirstRunGate({ lang, character, navryaCharacter }) {
   const [open, setOpen] = React.useState(true);
   if (!open) return null;
   function finish() { setOpen(false); }
@@ -458,7 +464,7 @@ function AnalysisProfileFirstRunGate({ lang }) {
     }
     finish();
   }
-  return <AnalysisProfileOnboarding mode="first-run" lang={lang} onComplete={complete} onSkip={skip} />;
+  return <AnalysisProfileRite lang={lang} character={character} navryaCharacter={navryaCharacter} onComplete={complete} onSkip={skip} />;
 }
 
 export function mountCharacterApp(character) {
@@ -3898,7 +3904,12 @@ export function mountCharacterApp(character) {
       // never sees this root render anything.
       const analysisOnboardingRoot = document.getElementById('navryaAnalysisProfileOnboardingRoot');
       if (analysisOnboardingRoot && window.TradeJournalAnalysisProfileStore && !window.TradeJournalAnalysisProfileStore.listSync().length) {
-        createRoot(analysisOnboardingRoot).render(<AnalysisProfileFirstRunGate lang={String(document.documentElement.lang || 'en').toLowerCase()} />);
+        createRoot(analysisOnboardingRoot).render(
+          <AnalysisProfileFirstRunGate
+            lang={String(document.documentElement.lang || 'en').toLowerCase()}
+            character={character} navryaCharacter={navryaCharacter}
+          />
+        );
       }
 
       // Real-money subscription rollout: a page-level popup when the wallet is depleted or the
