@@ -1577,6 +1577,70 @@ Each feature i18n module exposes a `window` API with `t()`, current language, di
     (editable by hand), the `EngineLearningPanel` (`navrya-src/engineLearning.jsx`, below), and the
     REAL learning history read from `GET .../:id/events` (never a reconstructed timeline), with a
     true token total summed over the recorded events.
+  - **Memory Graph (derived visualization, never a second memory):** the Memory tab's top band is
+    one five-column grid - the graph in two columns, `understanding` in the other three, both
+    stacking below 1120px (`public/pages/shared/navrya/memory-graph.css`, imported by
+    `navrya/styles.css`, so no character page changed). It is built to the reference graph app
+    (github.com/richardholliday/graph-app, live at driftforge.cloud): a real `3d-force-graph`, sphere
+    volume growing with the square of a node's connections, half-opacity links each carrying one
+    directional particle, neighbourhood dimming on hover, and a blurred toolbar with a search pill and
+    one filter pill per node kind, a legend, a centred stats pill, a hover tooltip and a detail panel
+    that slides in from the inline-end edge (a bottom sheet on phones). It deliberately does NOT
+    draw a brain or any other metaphor: an earlier brain-shaped design was rejected, and a test
+    now keeps that vocabulary out of the shipped code. **The rule this feature is built on: the graph
+    is a pure projection of an Analysis Profile that already exists. It has no store of its own, no
+    route, no table, no AI call, and it never writes.** `navrya-src/analysisProfileBrainGraph.js`
+    is the pure model (no DOM, no globals, unit-tested directly): it turns one profile object plus
+    the two registries into `{nodes, links}` over seven node kinds (`profile`, `primary-style`,
+    `secondary-style`, `focus`, `custom-focus`, `concept`, `understanding`) and seven link kinds.
+    Two properties are enforced by test rather than convention. (1) **No invented relationship.**
+    Every edge is either "the profile owns this" or a `style-focus` edge read from the style
+    registry's OWN `recommendedFocusIds`/`optionalFocusIds` AND only where the trader actually
+    selected that focus - the one structural edge that is not the profile's own, and what turns a
+    flat star into the clusters a trader recognises. A concept carries its stored `origin`
+    CATEGORY verbatim; there is no node kind for a knowledge source at all, so nothing can ever
+    claim a specific document produced a concept. (2) **No randomness:** seed positions come from a
+    mulberry32 PRNG keyed on the profile id, so the same profile starts from the same layout on every
+    reload. The lens layer and the learned layer are seeded into their own anchor zones; the live
+    engine then keeps simulating from those seeds, exactly like the reference app, for a bounded
+    number of ticks, and the lightweight preview projects the seed layout directly. The layout is
+    d3-force-3d's own formulation plus the two stabilisations a naive port leaves out - a
+    `distanceMin` floor under the repulsion denominator and a per-tick velocity clamp - without which
+    a 30-node graph diverges to ~1e51 in 400 ticks (measured, not theoretical). Only ENABLED
+    concepts appear, matching `analysis-context.js`'s own `enabledConcepts()`;
+    `getAnalysisContext()` is consulted ONLY to confirm what genuinely reached the engine, never for
+    structure. Views memoise on `graphInputSignature(profile)`, a string over exactly the fields the
+    graph is built from - counting concepts and reading the understanding version is not enough,
+    because renaming a concept changes neither. `navrya-src/analysisProfileBrain.jsx` renders it
+    twice: a lightweight rotating SVG preview inside the tab (no WebGL, no download), and - only once
+    the trader clicks - the full-screen workspace. **The 3D engine is vendored
+    (`public/pages/shared/vendor/3d-force-graph.min.js`, the same convention `lucide.min.js`
+    already uses) and injected as a `<script>` on first open, NOT imported.** `react-force-graph-3d`
+    was the original plan and was deliberately not used: the NAVRYA build is one IIFE per character
+    (`vite.navrya.config.mjs`), a format Rollup cannot code-split, so a bundled import would ship
+    ~1.3MB into every character bundle and parse it on every page load for a view most visits never
+    open. The wrapper only wraps this same engine, so the rendering is identical; the measured cost
+    of the whole feature to the character bundle is ~40KB. Four decisions in the workspace are
+    load-bearing. (a) **It is a fixed overlay with an explicit `inset: 0`, not a child of `Modal`.**
+    `Modal`'s body is an auto-height scroll container, so an inner `flex: 1` has no definite height
+    to fill and the canvas collapses to nothing - the same failure the preview block had when its
+    viewport shrank to a sliver. It still behaves as a dialog (`role`, focus in and back to the
+    opener, Escape, Tab kept inside, page scroll locked) and still yields to the ChatDock through
+    `--navrya-chat-dock-reserved`. (b) **"Pause motion" never pauses the render loop.**
+    `pauseAnimation()` also stops the camera controls, so a graph paused that way could not be
+    rotated; the toggle instead stops the link particles and turns the camera easing off, and the loop
+    itself is paused only for a hidden tab. (c) **Everything is reachable without WebGL.** The search
+    field lists results as real buttons (Enter selects, Escape clears before it closes the dialog),
+    and when the engine cannot start the overlay lists every node, so the detail panel - which is
+    plain DOM, not part of the canvas - still works. (d) **Labels are an HTML overlay, not sprites**,
+    positioned from `graph2ScreenCoords`: plain `textContent` only, never HTML, because they are the
+    trader's own words; RTL and the page font come free, and a leaf node earns a label only once the
+    camera is close, with depth fading. CSS custom properties are resolved to real colours before
+    reaching WebGL. One WebGL canvas exists at a time (module-level instance, `_destructor()` on
+    unmount). Every loop is `requestAnimationFrame` with a cancel, never an interval, and the force
+    simulation has a bounded cooldown followed by a single `zoomToFit`. "Manage concepts" returns to
+    the Concepts tab and its existing `applyLearning()`/`update()` paths - this view never grows a
+    second editor.
   - **Engine-learning loop:** `navrya-src/engineLearning.jsx`'s `EngineLearningPanel` - a trader
     writes a note or a correction; ONE billed AI call
     (`window.TradeJournalAnalysisProfileAI.ingestLearning`, POST `/api/analysis-profiles/ingest`)
@@ -2004,7 +2068,30 @@ Each feature i18n module exposes a `window` API with `t()`, current language, di
   Overview and Report reading the exact same `usage.compute()` call site, the four character pages
   loading `analysis-profile-usage.js` right after `analysis-profile-brief.js`); `analysis-profile-
   store.test.mjs`'s `getUsage()` cases (awaits the profile's own write before reading, rejects with
-  the server's real `AnalysisProfileError` code on failure).
+  the server's real `AnalysisProfileError` code on failure). **Memory Graph:**
+  `analysis-profile-memory-graph.test.mjs` (the pure model executed directly - taxonomy,
+  enabled-concepts-only, the context bundle as the authority on what reached the engine,
+  `style-focus` edges only where the registry declares them AND the trader selected them, origin
+  copied verbatim with no source node existing at all, an unresolvable registry id falling back to
+  its raw id rather than an invented name, degree-squared volume, layout determinism across rebuilds
+  and divergence between two profile ids, convergence with the two layers separated and no
+  overlapping pair, the input signature changing for every field the graph reads - a concept rename
+  included - and for nothing else, and a code-only scan proving no `Math.random`/storage/network/DOM);
+  `analysis-profile-memory-graph-ui.test.mjs` (four-language copy completeness plus placeholder
+  parity, the five-column band's real CSS contract and its narrow-width stacking, every `nv-*` token
+  in the code existing in the stylesheet, the workspace being a fixed overlay rather than a Modal
+  child, its dialog behaviour, the reference chrome's parts and engine settings, search keyboard
+  behaviour, camera framing, logical-only CSS apart from the tooltip, the phone bottom sheet,
+  reduced motion, "pause motion" never pausing the render loop, the engine being vendored and
+  script-injected rather than imported, one-canvas teardown, the non-WebGL fallback,
+  `textContent`-only labels, no interval, and the rejected brain vocabulary being absent);
+  `analysis-profile-memory-graph-render.test.mjs` (the components actually RENDERED - esbuild,
+  already here as Vite's compiler, bundles them with React and `renderToString` runs the whole
+  render phase in all four languages: no leaked copy key, the right direction per language, the
+  chrome present on first paint, deterministic markup, a hostile concept title escaped, and a
+  not-yet-normalised profile surviving - mutation-tested by injecting an undefined identifier and a
+  missing key); `analysis-profile-no-undefined-constants.test.mjs` also covers
+  `analysisProfileBrain.jsx`.
 
 ### 7.26 Support Tickets & Notification Badges
 
