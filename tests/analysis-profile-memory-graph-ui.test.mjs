@@ -109,6 +109,7 @@ test('every nv- class the components render exists in the stylesheet', async () 
     for (const match of stripComments(source).matchAll(/\bnv-[a-z0-9-]+/g)) rendered.add(match[0]);
   }
   rendered.delete('nv-gx-open');   // toggled on <html>, styled as `html.nv-gx-open`
+  rendered.delete('nv-memory-text-');   // the id PREFIX of the graph's textual equivalent (an id, not a class)
   assert.ok(rendered.size >= 40, 'expected the band and workspace classes, saw ' + rendered.size);
   for (const cls of rendered) assert.ok(css.includes('.' + cls), 'class rendered but never styled: ' + cls);
 });
@@ -337,7 +338,7 @@ test('reduced motion also stops the panel slide and the spinner, and focus is al
 test('the graph is memoised on a content signature, not on counts that a rename does not change', async () => {
   const source = await brain();
   assert.ok(source.includes('graphInputSignature(profile)'));
-  assert.ok(source.includes('[signature, lang]'));
+  assert.ok(source.includes('[signature, lang, provided]'), 'the signature still drives the memo; a handed-in synced graph is the only other input');
   assert.ok(!source.includes('profile.concepts.length'), 'a length-based dependency misses renames');
 });
 

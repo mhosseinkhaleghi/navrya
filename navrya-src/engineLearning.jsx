@@ -55,7 +55,7 @@ const fieldStyle = {
   background: 'rgba(3,8,7,.55)', color: 'var(--text-primary)', font: 'inherit', fontSize: 13, lineHeight: 1.8, outline: 'none', width: '100%'
 };
 
-export function EngineLearningPanel({ lang, profile, onChanged, preset, onTaught }) {
+export function EngineLearningPanel({ lang, profile, onChanged, preset, onTaught, onReviewChange }) {
   const [text, setText] = React.useState('');
   const [kind, setKind] = React.useState('note');
   const [phase, setPhase] = React.useState('idle'); // idle | working | review
@@ -77,6 +77,13 @@ export function EngineLearningPanel({ lang, profile, onChanged, preset, onTaught
   function changed() { if (onChanged) onChanged(); }
 
   const currentUnderstanding = profile.understanding ? profile.understanding.summary : '';
+  // An AI proposal open for review is NOT memory yet. The Memory tab lists it as awaiting review, so this reports how many items it holds
+  // while one is open and 0 the moment it is applied or discarded.
+  React.useEffect(() => {
+    if (!onReviewChange) return undefined;
+    onReviewChange(phase === 'review' && proposal ? Math.max(1, proposal.conceptsProposed.length + (proposal.updatedUnderstanding ? 1 : 0)) : 0);
+    return () => onReviewChange(0);
+  }, [phase, proposal]);
   const trimmed = text.trim();
   // preset.editable (the Preview tab's "Correct this"): the preset supplies FIXED context (the
   // illustrative sample being corrected) but the trader must still type what is actually wrong with

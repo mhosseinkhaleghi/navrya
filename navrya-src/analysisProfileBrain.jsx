@@ -121,11 +121,14 @@ function displayLabel(node, lang) {
 
 /* -------------------------------------------------------- shared model --- */
 
-function useMemoryGraph(profile, lang) {
+function useMemoryGraph(profile, lang, provided) {
   // Memoised on a signature of exactly the fields the graph is built from. Counting concepts and
   // reading the understanding version is not enough: renaming a concept changes neither.
+  // `provided` is a graph the Memory tab already built - the SYNCED projection (analysisProfileMemoryProjection.js, decorated the same
+  // way): the picture then shows exactly what was last synced, stale or not, instead of silently rebuilding from the live profile.
   const signature = graphInputSignature(profile);
   return React.useMemo(() => {
+    if (provided) return provided;
     const graph = buildLaidOutGraph(profile, {
       styles: window.TradeJournalAnalysisStyleRegistry,
       focuses: window.TradeJournalAnalysisFocusRegistry,
@@ -143,7 +146,7 @@ function useMemoryGraph(profile, lang) {
       graph.adjacency[link.target][link.source] = true;
     });
     return graph;
-  }, [signature, lang]);
+  }, [signature, lang, provided]);
 }
 
 /* ------------------------------------------------------- SVG preview --- */
@@ -158,7 +161,7 @@ const PREVIEW_TURN_MS = 28000;   // one full revolution; calm, but visibly alive
  * projected to plain SVG. No WebGL, no engine download - so the Memory tab costs nothing until the
  * trader asks for the real thing.
  */
-function GraphPreview({ graph, lang, height }) {
+function GraphPreview({ graph, lang, height, describedBy }) {
   const wrapRef = React.useRef(null);
   const svgRef = React.useRef(null);
 
@@ -283,6 +286,7 @@ function GraphPreview({ graph, lang, height }) {
     <div
       ref={wrapRef} tabIndex={0} role="img"
       aria-label={trt(lang, 'graphPreviewAlt', { n: trDigits(lang, graph.nodes.length) })}
+      aria-describedby={describedBy}
       style={{
         position: 'relative', height, borderRadius: 8, overflow: 'hidden',
         border: '1px solid var(--border-hairline)', background: 'var(--ink-950)'
@@ -296,8 +300,8 @@ function GraphPreview({ graph, lang, height }) {
 
 /* ------------------------------------------------- the Memory tab block --- */
 
-export function MemoryGraphPanel({ profile, lang, onOpen }) {
-  const graph = useMemoryGraph(profile, lang);
+export function MemoryGraphPanel({ profile, lang, onOpen, graph: providedGraph, describedBy }) {
+  const graph = useMemoryGraph(profile, lang, providedGraph);
   const empty = graph.nodes.length <= 1;
   const focusCount = graph.counts.focus + graph.counts['custom-focus'];
 
@@ -324,7 +328,7 @@ export function MemoryGraphPanel({ profile, lang, onOpen }) {
           /* The viewport needs a real height: it is a flex child in a grid row whose height is
              auto, so without one it collapses to whatever the neighbouring column happens to be
              and the graph renders into a sliver. */
-          <GraphPreview graph={graph} lang={lang} height={252} />
+          <GraphPreview graph={graph} lang={lang} height={252} describedBy={describedBy} />
         )}
 
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', border: '1px solid var(--border-hairline)', borderRadius: 8, overflow: 'hidden', flex: 'none' }}>
@@ -362,8 +366,8 @@ const LABEL_NEAR = 380;       // a leaf node only earns a label once the camera 
 const LABEL_FADE = 1100;      // labels dim with distance, the way the reference's sprites shrink
 const SEARCH_RESULT_LIMIT = 8;
 
-export function MemoryGraphWorkspace({ profile, lang, onClose, onManageConcepts }) {
-  const graph = useMemoryGraph(profile, lang);
+export function MemoryGraphWorkspace({ profile, lang, onClose, onManageConcepts, graph: providedGraph }) {
+  const graph = useMemoryGraph(profile, lang, providedGraph);
   const rootRef = React.useRef(null);
   const canvasRef = React.useRef(null);
   const labelLayerRef = React.useRef(null);

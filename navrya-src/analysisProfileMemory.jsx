@@ -3,6 +3,7 @@ import { Panel } from '../public/pages/shared/navrya/components/core/Panel.jsx';
 import { Icon } from '../public/pages/shared/navrya/components/core/Icon.jsx';
 import { Button } from '../public/pages/shared/navrya/components/forms/Button.jsx';
 import { EngineLearningPanel } from './engineLearning.jsx';
+import { MemorySyncPanel, useMemoryProjection } from './analysisProfileMemorySync.jsx';
 import { MemoryGraphPanel, MemoryGraphWorkspace } from './analysisProfileBrain.jsx';
 import { trt, trDigits, trDate } from './analysisProfileTrainingCopy.js';
 
@@ -65,6 +66,12 @@ export function MemoryTab({ profile, lang, onManageConcepts }) {
   // The 3D workspace is a separate surface, opened deliberately - never mounted with the tab, so
   // the WebGL context and the vendored engine only ever exist once the trader asks for them.
   const [graphOpen, setGraphOpen] = React.useState(false);
+  // AI proposals open in the teaching panel below (not accepted yet) - reported up so the sync status can list them as awaiting review.
+  const [reviewing, setReviewing] = React.useState(0);
+  // The graph and the sync status are ONE projection (analysisProfileMemorySync.jsx): a derived view of the saved profile, the engine context,
+  // the ledger and the sources. It never writes and never calls AI; the picture shows the last SYNCED memory, and says when it is stale.
+  const memory = useMemoryProjection(profile, lang, { reviewingCount: reviewing });
+  const textId = 'nv-memory-text-' + String(profile.id).replace(/[^A-Za-z0-9_-]/g, '');
   const aliveRef = React.useRef(true);
   React.useEffect(() => { aliveRef.current = true; return () => { aliveRef.current = false; }; }, []);
 
@@ -111,7 +118,7 @@ export function MemoryTab({ profile, lang, onManageConcepts }) {
           other three. Both stack below 1120px - see navrya/memory-graph.css. */}
       <div className="nv-memory-band">
         <div className="nv-memory-graph">
-          <MemoryGraphPanel profile={profile} lang={lang} onOpen={() => setGraphOpen(true)} />
+          <MemoryGraphPanel profile={profile} lang={lang} onOpen={() => setGraphOpen(true)} graph={memory.projection.graph} describedBy={textId} />
         </div>
         <div className="nv-memory-understanding">
       <Panel padding="18px 20px" style={{ height: '100%' }}>
@@ -143,7 +150,9 @@ export function MemoryTab({ profile, lang, onManageConcepts }) {
         </div>
       </div>
 
-      <EngineLearningPanel lang={lang} profile={profile} onChanged={reload} />
+      <MemorySyncPanel lang={lang} memory={memory} textId={textId} />
+
+      <EngineLearningPanel lang={lang} profile={profile} onChanged={reload} onReviewChange={setReviewing} />
 
       <Panel padding="18px 20px">
         <div style={{ display: 'flex', flexDirection: 'column' }}>
@@ -164,7 +173,7 @@ export function MemoryTab({ profile, lang, onManageConcepts }) {
 
       {graphOpen && (
         <MemoryGraphWorkspace
-          profile={profile} lang={lang}
+          profile={profile} lang={lang} graph={memory.projection.graph}
           onClose={() => setGraphOpen(false)}
           // Editing a concept belongs to the Concepts tab and its existing applyLearning()/update()
           // paths; the graph never grows a second form for the same records.

@@ -277,7 +277,10 @@ test('the preset teach flow reuses the same single-call propose/apply path: kind
   assert.equal((teach.match(/ingestLearning\(/g) || []).length, 1);
   assert.match(engine, /const teachKind = preset \? \(preset\.kind \|\| 'source'\) : kind;/, 'the Knowledge tab relies on the default (no preset.kind override) staying "source"');
   assert.ok(teach.indexOf('preset.loadAttachment()') > -1 && teach.indexOf('preset.loadAttachment()') < teach.indexOf('ingestLearning('));
-  assert.match(teach, /MODEL_PDF_UNSUPPORTED/);
+  // The unsupported-PDF-provider case is one of the specific kinds of the shared AI error mapper (analysisProfileAiErrors.js), so the teach flow
+  // only has to hand the caught error to it - and the mapper has to know that code.
+  assert.match(teach, /setError\(toAiError\(caught\)\)/);
+  assert.match(await read('analysisProfileAiErrors.js'), /MODEL_PDF_UNSUPPORTED/);
   assert.match(engine, /preset \? \(teachKind === 'correction' \? 'taught_correction' : 'taught_source'\)/, 'the Knowledge tab (no preset.kind override) still records taught_source');
 });
 
