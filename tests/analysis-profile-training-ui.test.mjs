@@ -103,8 +103,11 @@ test('"Save without teaching" is a plain diary note: it calls recordNote() and N
 
 test('the wallet-balance error is shown honestly, distinct from a generic failure - there is no fake local fallback proposal', async () => {
   const source = await read('engineLearning.jsx');
-  assert.match(source, /WALLET_INSUFFICIENT_BALANCE/);
-  assert.match(source, /aiErrorBalance/);
+  // An empty wallet, an expired session, a dead proxy, a timeout and a PDF-incompatible model each get their own message from the
+  // shared mapper (tests/analysis-profile-ai-errors.test.mjs) - this file only keeps the raw code and never fakes a proposal.
+  assert.match(source, /setError\(toAiError\(caught\)\)/);
+  assert.match(source, /<AiErrorNotice lang=\{lang\} error=\{error\} onRetry=\{teach\} busy=\{phase === 'working'\} \/>/);
+  assert.doesNotMatch(source, /WALLET_INSUFFICIENT_BALANCE|MODEL_PDF_UNSUPPORTED/);
   assert.doesNotMatch(source, /local-fallback|fallbackProposal|mockProposal/i);
 });
 

@@ -3,6 +3,8 @@ import { Panel } from '../public/pages/shared/navrya/components/core/Panel.jsx';
 import { Icon } from '../public/pages/shared/navrya/components/core/Icon.jsx';
 import { Button } from '../public/pages/shared/navrya/components/forms/Button.jsx';
 import { EngineLearningPanel } from './engineLearning.jsx';
+import { AiErrorNotice } from './analysisProfileAiStatus.jsx';
+import { toAiError } from './analysisProfileAiErrors.js';
 import { trt, trDigits } from './analysisProfileTrainingCopy.js';
 
 // The Analysis Profile "Preview" tab (ARCHITECTURE.md §7.25, Phase 4) - two honestly separate halves:
@@ -41,13 +43,15 @@ export function PreviewTab({ profile, lang }) {
   const [phase, setPhase] = React.useState('idle'); // idle | working | ready
   const [observations, setObservations] = React.useState([]);
   const [usage, setUsage] = React.useState(null);
-  const [error, setError] = React.useState('');
+  // { code, status? } of the last failed sample request (analysisProfileAiErrors.toAiError), or null. It is shown as a
+  // translated, specific message with a Retry that re-runs generate() - the same request, the same profile context.
+  const [error, setError] = React.useState(null);
   const [correcting, setCorrecting] = React.useState(null); // the observation being corrected, or null
 
   async function generate() {
     const client = aiClient();
     if (!client || phase === 'working') return;
-    setPhase('working'); setError('');
+    setPhase('working'); setError(null);
     try {
       const result = await client.preview({ profileContext, language: lang });
       setObservations(result.observations);
@@ -55,7 +59,7 @@ export function PreviewTab({ profile, lang }) {
       setPhase('ready');
     } catch (caught) {
       setPhase(observations.length ? 'ready' : 'idle');
-      setError(caught && caught.code === 'WALLET_INSUFFICIENT_BALANCE' ? trt(lang, 'chatErrorBalance') : trt(lang, 'chatErrorGeneric'));
+      setError(toAiError(caught));
     }
   }
 
@@ -93,7 +97,7 @@ export function PreviewTab({ profile, lang }) {
               {trt(lang, phase === 'ready' ? 'sampleRegenerateBtn' : 'sampleBtn')}
             </Button>
           </div>
-          {error && <span style={{ fontSize: 12, color: 'var(--danger)' }}>{error}</span>}
+          <AiErrorNotice lang={lang} error={error} onRetry={generate} busy={phase === 'working'} />
           {phase === 'ready' && (
             <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
               {usage && tokensOf(usage) > 0 && <span style={{ fontSize: 10.5, color: 'var(--text-dim)' }}>{trt(lang, 'chatTokensUsed', { n: trDigits(lang, tokensOf(usage).toLocaleString('en-US')) })}</span>}

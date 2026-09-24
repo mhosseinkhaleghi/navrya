@@ -80,10 +80,11 @@ test('a resolved proposal (applied or dismissed) shows a status label, not Apply
   assert.match(source, /resolved \? \(/);
 });
 
-test('the wallet-balance error is distinct from a generic failure - no fake local fallback reply', async () => {
+test('a failed send keeps its specific error (wallet, auth, proxy, timeout, ...) via the shared mapper - no per-code ternary, no fake local fallback reply', async () => {
   const source = await read('analysisProfileChat.jsx');
-  assert.match(source, /WALLET_INSUFFICIENT_BALANCE/);
-  assert.match(source, /chatErrorBalance/);
+  assert.match(source, /setError\(toAiError\(caught\)\)/);
+  assert.match(source, /<AiErrorNotice lang=\{lang\} error=\{error\} onRetry=\{send\} busy=\{sending\} \/>/);
+  assert.doesNotMatch(source, /WALLET_INSUFFICIENT_BALANCE/, 'the wording of each failure is owned by analysisProfileAiErrors.js, not re-decided here');
   assert.doesNotMatch(source, /local-fallback|fallbackReply|mockReply/i);
 });
 

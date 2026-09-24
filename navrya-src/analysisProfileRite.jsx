@@ -6,6 +6,8 @@ import { assetUrl } from '../public/pages/shared/navrya/components/core/AssetBas
 import { stringsFor } from './i18n.js';
 import { CHARACTERS } from './characters.js';
 import { SPECIAL_STYLE_IDS, FEATURED_STYLE_IDS, copy as baseCopy } from './analysisProfileOnboarding.jsx';
+import { AiErrorNotice } from './analysisProfileAiStatus.jsx';
+import { toAiError } from './analysisProfileAiErrors.js';
 
 // Analysis Profiles domain (see ARCHITECTURE.md §7.25 and character-app.jsx's own
 // AnalysisProfileFirstRunGate comment). This is the full-screen, four-beat first-run "rite":
@@ -450,7 +452,7 @@ export function AnalysisProfileRite({ lang, character, navryaCharacter, onComple
   const [newFocusDescription, setNewFocusDescription] = React.useState('');
   const [aiSuggestions, setAiSuggestions] = React.useState([]);
   const [aiSuggestLoading, setAiSuggestLoading] = React.useState(false);
-  const [aiSuggestError, setAiSuggestError] = React.useState('');
+  const [aiSuggestError, setAiSuggestError] = React.useState(null); // { code, status? } of the last failed suggestion request
   const [name, setName] = React.useState('');
   const [nameTouched, setNameTouched] = React.useState(false);
   const [sealing, setSealing] = React.useState(false);
@@ -518,7 +520,7 @@ export function AnalysisProfileRite({ lang, character, navryaCharacter, onComple
     const client = window.TradeJournalAnalysisProfileAI;
     if (!client || aiSuggestLoading) return;
     setAiSuggestLoading(true);
-    setAiSuggestError('');
+    setAiSuggestError(null);
     try {
       const result = await client.suggestFocuses({
         primaryStyleId, secondaryStyleIds, customMethodNotes, language: activeLang,
@@ -526,7 +528,7 @@ export function AnalysisProfileRite({ lang, character, navryaCharacter, onComple
       });
       setAiSuggestions((prev) => prev.concat(result.suggestions));
     } catch (error) {
-      setAiSuggestError(error && error.code === 'WALLET_INSUFFICIENT_BALANCE' ? tr(activeLang, 'aiSuggestErrorBalance') : tr(activeLang, 'aiSuggestErrorGeneric'));
+      setAiSuggestError(toAiError(error));
     } finally {
       setAiSuggestLoading(false);
     }
@@ -809,7 +811,7 @@ export function AnalysisProfileRite({ lang, character, navryaCharacter, onComple
                       </Button>
                       <span style={{ fontSize: 10.5, color: 'var(--text-dim)' }}>{tr(activeLang, 'aiSuggestHint')}</span>
                     </div>
-                    {aiSuggestError && <span style={{ fontSize: 11.5, color: 'var(--danger)' }}>{aiSuggestError}</span>}
+                    <AiErrorNotice lang={activeLang} error={aiSuggestError} onRetry={regenerateFocusSuggestions} busy={aiSuggestLoading} />
                     {aiSuggestions.length > 0 && (
                       <div className="nv-rite__chips">
                         {aiSuggestions.map((s) => (

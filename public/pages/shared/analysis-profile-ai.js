@@ -19,16 +19,26 @@
 (function () {
   'use strict';
 
-  var config = window.TradeJournalPatternAIConfig || {};
-  var baseUrl = String(config.baseUrl || '').replace(/\/$/, '');
+  // Resolved on EVERY request, never captured at script evaluation: pattern-ai-config.js (or a late
+  // bootstrap that sets TradeJournalPatternAIConfig.baseUrl after this script ran) would otherwise leave
+  // this client pointing at the same-origin default forever - a request to the wrong origin that fails
+  // with an undiagnosable network/proxy error instead of reaching the gateway.
+  function apiBase() {
+    var config = window.TradeJournalPatternAIConfig || {};
+    return String(config.baseUrl || '').replace(/\/$/, '');
+  }
 
   function styleRegistry() { return window.TradeJournalAnalysisStyleRegistry; }
 
-  function AnalysisProfileAIError(code, cause) {
+  // `status` is the HTTP status when the failure came from a response (undefined for a timeout or a
+  // network failure that never produced one) - it is what lets the UI tell "the gateway said no" from
+  // "something between the browser and the gateway answered instead".
+  function AnalysisProfileAIError(code, cause, status) {
     this.name = 'AnalysisProfileAIError';
     this.code = code;
     this.message = code;
     this.cause = cause;
+    if (status != null) this.status = status;
   }
   AnalysisProfileAIError.prototype = Object.create(Error.prototype);
 
@@ -55,12 +65,18 @@
     var free = Boolean(settings && settings.free);
     var controller = new AbortController();
     var timeout = window.setTimeout(function () { controller.abort(); }, free ? 60000 : 45000);
-    return fetch(baseUrl + path, {
+    return fetch(apiBase() + path, {
       method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(Object.assign({}, free ? {} : providerContext(), payload)), signal: controller.signal
     }).then(function (response) {
       if (!response.ok) {
         return response.json().catch(function () { return {}; }).then(function (body) {
-          throw new AnalysisProfileAIError(body.error || 'ANALYSIS_PROFILE_AI_REQUEST_FAILED');
+          // The gateway ALWAYS answers a failure with { error: '<STABLE_CODE>' }. A failure without one was
+          // not produced by the gateway: a reverse proxy / load balancer answered instead (502/503/504, or a
+          // 404/405 for a route it does not forward), so it is reported as a proxy failure, never as a
+          // generic request failure the trader cannot act on.
+          var code = body && typeof body.error === 'string' && body.error ? body.error
+            : (response.status >= 500 || response.status === 404 || response.status === 405 ? 'ANALYSIS_PROFILE_AI_PROXY_ERROR' : 'ANALYSIS_PROFILE_AI_REQUEST_FAILED');
+          throw new AnalysisProfileAIError(code, undefined, response.status);
         });
       }
       return response.json();
@@ -69,6 +85,29 @@
       if (error && error.name === 'AbortError') throw new AnalysisProfileAIError('ANALYSIS_PROFILE_AI_TIMEOUT', error);
       throw new AnalysisProfileAIError('ANALYSIS_PROFILE_AI_NETWORK_ERROR', error);
     }).finally(function () { window.clearTimeout(timeout); });
+  }
+
+  // A small, NON-SECRET description of how the next billed call will be served, for the readiness line in
+  // the Analysis Profile area: BYOK (the trader's own key - never wallet-billed) or platform-managed (billed
+  // per the token policy), plus the provider/model the trader selected when one is known locally. It never
+  // returns, logs or exposes the key itself - only whether one is set. Best-effort: a missing/throwing
+  // settings store reads as platform-managed.
+  function readiness() {
+    var out = { mode: 'platform', provider: '', providerLabel: '', model: '' };
+    try {
+      var settings = window.TradeJournalAISettingsStore;
+      if (!settings || typeof settings.activeProvider !== 'function') return out;
+      var provider = settings.activeProvider() || '';
+      var hasKey = Boolean(provider && typeof settings.getKey === 'function' && settings.getKey(provider));
+      out.mode = hasKey ? 'byok' : 'platform';
+      out.provider = provider;
+      out.model = typeof settings.activeModel === 'function' ? (settings.activeModel() || '') : '';
+      if (typeof settings.providerCatalog === 'function') {
+        var entry = (settings.providerCatalog() || []).filter(function (item) { return item && item.id === provider; })[0];
+        out.providerLabel = entry && entry.label ? String(entry.label) : provider;
+      } else out.providerLabel = provider;
+    } catch (_) { /* readiness is display-only */ }
+    return out;
   }
 
   // Records the real, server-reported usage against this tab's own visible usage counter - same
@@ -194,7 +233,7 @@
 
   window.TradeJournalAnalysisProfileAI = {
     suggestFocuses: suggestFocuses, suggestConcepts: suggestConcepts, ingestLearning: ingestLearning, readSource: readSource,
-    chat: chat, preview: preview,
+    chat: chat, preview: preview, readiness: readiness,
     AnalysisProfileAIError: AnalysisProfileAIError
   };
 }());

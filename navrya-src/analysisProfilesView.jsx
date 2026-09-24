@@ -12,6 +12,7 @@ import { KnowledgeTab } from './analysisProfileKnowledge.jsx';
 import { ChatTab as AnalysisProfileChatTab } from './analysisProfileChat.jsx';
 import { PreviewTab } from './analysisProfilePreview.jsx';
 import { ProfileReport, UsageSummary } from './analysisProfileReport.jsx';
+import { AiReadinessBar } from './analysisProfileAiStatus.jsx';
 import { trt, trDigits } from './analysisProfileTrainingCopy.js';
 
 // Analysis Profiles domain (see ARCHITECTURE.md §7.25). List + detail (Overview / Report) for
@@ -150,6 +151,8 @@ function strategyStore() { return window.TradeJournalStrategyEducationStore; }
 
 function styleName(id, lang) { const st = styleRegistry() && styleRegistry().get(id); return st ? (st.name[lang] || st.name.en) : id; }
 function focusName(id, lang) { const f = focusRegistry() && focusRegistry().get(id); return f ? (f.name[lang] || f.name.en) : id; }
+
+const AI_TABS = ['concepts', 'knowledge', 'memory', 'chat', 'preview'];
 
 function linkedStrategiesFor(profileId) {
   const store = strategyStore();
@@ -448,6 +451,9 @@ function ProfileDetail({ profile, lang, dtab, setDtab, queuedLinks, onBack, onEd
           }}>{label}</button>
         ))}
       </div>
+
+      {/* The tabs that make a billed AI call say, once, how that call will be served (own key vs platform) - never the key itself. */}
+      {AI_TABS.indexOf(dtab) > -1 && <AiReadinessBar lang={lang} />}
 
       {dtab === 'setup' && <SetupTab key={profile.id} profile={profile} lang={lang} onUpdate={(patch) => onUpdateProfile(patch)} />}
       {dtab === 'concepts' && <ConceptsTab key={profile.id} profile={profile} lang={lang} />}

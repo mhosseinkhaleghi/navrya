@@ -2,6 +2,8 @@ import React from 'react';
 import { Panel } from '../public/pages/shared/navrya/components/core/Panel.jsx';
 import { Icon } from '../public/pages/shared/navrya/components/core/Icon.jsx';
 import { Button } from '../public/pages/shared/navrya/components/forms/Button.jsx';
+import { AiErrorNotice } from './analysisProfileAiStatus.jsx';
+import { toAiError } from './analysisProfileAiErrors.js';
 import { trt, trDigits } from './analysisProfileTrainingCopy.js';
 
 // The Analysis Profile "Chat" tab (ARCHITECTURE.md §7.25, Phase 4): teaching a profile through an
@@ -64,7 +66,9 @@ export function ChatTab({ profile, lang }) {
   const [phase, setPhase] = React.useState('loading'); // loading | ready
   const [draft, setDraft] = React.useState('');
   const [sending, setSending] = React.useState(false);
-  const [error, setError] = React.useState('');
+  // { code, status? } of the last failed send (analysisProfileAiErrors.toAiError), or null; Retry re-runs send() with the draft the
+  // trader already typed (a failed send never clears it), so the retried request is identical.
+  const [error, setError] = React.useState(null);
   const [busyProposal, setBusyProposal] = React.useState(null);
   const [notice, setNotice] = React.useState('');
   const listRef = React.useRef(null);
@@ -84,7 +88,7 @@ export function ChatTab({ profile, lang }) {
     const client = aiClient();
     const context = analysisContext();
     if (!client || !profiles || !trimmed || sending) return;
-    setSending(true); setError('');
+    setSending(true); setError(null);
     const history = messages.map((m) => ({ role: m.role, content: m.content }));
     try {
       const profileContext = context ? context.getAnalysisContext(profile.id) : null;
@@ -103,7 +107,7 @@ export function ChatTab({ profile, lang }) {
         profiles.recordEvent(profile.id, { kind: 'ai_analyzed_chat', title: trimmed.slice(0, 80), detail: trimmed, understandingVersion: profile.understanding.version, tokenUsage: result.usage }).catch(() => {});
       }
     } catch (caught) {
-      if (aliveRef.current) setError(caught && caught.code === 'WALLET_INSUFFICIENT_BALANCE' ? trt(lang, 'chatErrorBalance') : trt(lang, 'chatErrorGeneric'));
+      if (aliveRef.current) setError(toAiError(caught));
     } finally { if (aliveRef.current) setSending(false); }
   }
 
@@ -174,7 +178,7 @@ export function ChatTab({ profile, lang }) {
               </div>
             ))}
             {sending && <span style={{ fontSize: 11.5, color: 'var(--text-dim)' }}>{trt(lang, 'chatSending')}</span>}
-            {error && <span style={{ fontSize: 12, color: 'var(--danger)' }}>{error}</span>}
+            <AiErrorNotice lang={lang} error={error} onRetry={send} busy={sending} />
           </div>
           <div style={{ display: 'flex', alignItems: 'flex-end', gap: 10, padding: '14px 18px', borderTop: '1px solid var(--border-hairline)', background: 'rgba(3,8,7,.35)' }}>
             <textarea value={draft} onChange={(e) => setDraft(e.target.value)} rows={2} dir="auto" disabled={sending} maxLength={4000}

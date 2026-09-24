@@ -2,6 +2,8 @@ import React from 'react';
 import { Panel } from '../public/pages/shared/navrya/components/core/Panel.jsx';
 import { Icon } from '../public/pages/shared/navrya/components/core/Icon.jsx';
 import { Button } from '../public/pages/shared/navrya/components/forms/Button.jsx';
+import { AiErrorNotice } from './analysisProfileAiStatus.jsx';
+import { toAiError } from './analysisProfileAiErrors.js';
 import { trt, trDigits } from './analysisProfileTrainingCopy.js';
 
 // The Analysis Profile "Concepts" tab (ARCHITECTURE.md §7.25): the list/table of specific, checkable
@@ -85,7 +87,7 @@ export function ConceptsTab({ profile, lang }) {
   const [editError, setEditError] = React.useState('');
   const [suggestions, setSuggestions] = React.useState([]);
   const [suggestLoading, setSuggestLoading] = React.useState(false);
-  const [suggestError, setSuggestError] = React.useState('');
+  const [suggestError, setSuggestError] = React.useState(null); // { code, status? } of the last failed suggestion request
 
   const concepts = profile.concepts;
   const mandatoryCount = concepts.filter((c) => c.priority === 'mandatory').length;
@@ -145,7 +147,7 @@ export function ConceptsTab({ profile, lang }) {
   async function suggest() {
     const client = aiClient();
     if (!client || !profiles || suggestLoading) return;
-    setSuggestLoading(true); setSuggestError('');
+    setSuggestLoading(true); setSuggestError(null);
     try {
       const result = await client.suggestConcepts({
         primaryStyleId: profile.primaryStyleId, secondaryStyleIds: profile.secondaryStyleIds, customMethodNotes: profile.customMethodNotes, language: lang,
@@ -158,7 +160,7 @@ export function ConceptsTab({ profile, lang }) {
       }).catch(() => {});
       setSuggestions((prev) => prev.concat(result.suggestions.map((s) => ({ name: s.name, description: s.description, priority: s.priority || 'preferred', selected: false }))));
     } catch (caught) {
-      setSuggestError(caught && caught.code === 'WALLET_INSUFFICIENT_BALANCE' ? trt(lang, 'aiErrorBalance') : trt(lang, 'aiErrorGeneric'));
+      setSuggestError(toAiError(caught));
     } finally {
       setSuggestLoading(false);
     }
@@ -224,7 +226,7 @@ export function ConceptsTab({ profile, lang }) {
       {(suggestError || suggestions.length > 0) && (
         <Panel padding="14px 16px">
           <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-            {suggestError && <span style={{ fontSize: 12, color: 'var(--danger)' }}>{suggestError}</span>}
+            <AiErrorNotice lang={lang} error={suggestError} onRetry={suggest} busy={suggestLoading} />
             {suggestions.map((s) => (
               <div key={s.name} style={{ display: 'flex', alignItems: 'flex-start', gap: 10, padding: '9px 11px', borderRadius: 10, border: '1px dashed ' + (s.selected ? 'var(--char-accent)' : 'var(--divider-gold)'), background: s.selected ? 'var(--char-active-surface)' : 'rgba(183,138,74,.05)' }}>
                 <input type="checkbox" checked={s.selected} onChange={(e) => patchSuggestion(s.name, { selected: e.target.checked })} style={{ accentColor: 'var(--char-accent)', marginTop: 3 }} />
@@ -240,7 +242,7 @@ export function ConceptsTab({ profile, lang }) {
             {suggestions.length > 0 && (
               <div style={{ display: 'flex', gap: 8 }}>
                 <Button variant="primary" size="sm" icon="check" disabled={!chosen.length || capacity <= 0} onClick={addChosen}>{trt(lang, 'suggestAddSelected', { n: trDigits(lang, chosen.length) })}</Button>
-                <Button variant="ghost" size="sm" icon="close" onClick={() => { setSuggestions([]); setSuggestError(''); }}>{trt(lang, 'suggestDismiss')}</Button>
+                <Button variant="ghost" size="sm" icon="close" onClick={() => { setSuggestions([]); setSuggestError(null); }}>{trt(lang, 'suggestDismiss')}</Button>
               </div>
             )}
           </div>

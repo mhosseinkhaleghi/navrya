@@ -3,6 +3,7 @@ import { Panel } from '../public/pages/shared/navrya/components/core/Panel.jsx';
 import { Icon } from '../public/pages/shared/navrya/components/core/Icon.jsx';
 import { Button } from '../public/pages/shared/navrya/components/forms/Button.jsx';
 import { EngineLearningPanel } from './engineLearning.jsx';
+import { classifyAiError, aiErrorText } from './analysisProfileAiErrors.js';
 import { trt, trDigits, trDate } from './analysisProfileTrainingCopy.js';
 
 // The Analysis Profile "Knowledge" tab (ARCHITECTURE.md §7.25): the website / YouTube / PDF material a
@@ -45,8 +46,12 @@ function errorKeyFor(code) {
   if (value === 'MODEL_PDF_UNSUPPORTED') return 'sourceErrPdfProvider';
   return 'sourceErrGeneric';
 }
-function errorText(lang, code) {
-  return trt(lang, errorKeyFor(code), { n: trDigits(lang, errorKeyFor(code) === 'sourceErrPdfSize' ? MAX_PDF_MB : SOURCE_LIMIT) });
+function errorText(lang, code, status) {
+  const key = errorKeyFor(code);
+  // A code that is not one of the source-specific ones may still be a specific AI/connectivity failure (an expired session,
+  // a dead proxy, a timeout, a quota): say which instead of the catch-all.
+  if (key === 'sourceErrGeneric' && classifyAiError(code, status) !== 'generic') return aiErrorText(lang, code, status);
+  return trt(lang, key, { n: trDigits(lang, key === 'sourceErrPdfSize' ? MAX_PDF_MB : SOURCE_LIMIT) });
 }
 
 function readFileAsDataUrl(file) {

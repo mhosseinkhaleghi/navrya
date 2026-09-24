@@ -2,6 +2,8 @@ import React from 'react';
 import { Modal } from '../public/pages/shared/navrya/components/feedback/Modal.jsx';
 import { Button } from '../public/pages/shared/navrya/components/forms/Button.jsx';
 import { Icon } from '../public/pages/shared/navrya/components/core/Icon.jsx';
+import { AiErrorNotice } from './analysisProfileAiStatus.jsx';
+import { toAiError } from './analysisProfileAiErrors.js';
 
 // Analysis Profiles domain (see ARCHITECTURE.md §7.25). The exact TWO-step questionnaire the
 // brief specifies - Step 1 "how do you read the market" (style), Step 2 "what do your eyes look
@@ -50,7 +52,7 @@ export const copy = {
     addOwnFocusLabel: 'حوزه تمرکز خودت را اضافه کن', addOwnFocusNamePlaceholder: 'مثلاً: سطح‌های سوییپ‌شده',
     addOwnFocusDescriptionPlaceholder: 'توضیح کوتاه (اختیاری)', addOwnFocusButton: 'افزودن', yourOwnFocuses: 'حوزه‌های تمرکز خودت',
     aiSuggestButton: 'پیشنهاد بیشتر با هوش مصنوعی', aiSuggestLoading: 'در حال ساخت پیشنهاد…', aiSuggestBadge: 'AI',
-    aiSuggestAdd: 'افزودن', aiSuggestErrorBalance: 'موجودی کافی نیست.', aiSuggestErrorGeneric: 'ساخت پیشنهاد ممکن نشد. دوباره تلاش کن.',
+    aiSuggestAdd: 'افزودن',
     aiSuggestHint: 'این کار از توکن هوش مصنوعی استفاده می‌کند — با کلید API خودت رایگان است.'
   },
   ar: {
@@ -76,7 +78,7 @@ export const copy = {
     addOwnFocusLabel: 'أضف مجال تركيز خاص بك', addOwnFocusNamePlaceholder: 'مثال: مستويات تم اكتساحها',
     addOwnFocusDescriptionPlaceholder: 'وصف قصير (اختياري)', addOwnFocusButton: 'إضافة', yourOwnFocuses: 'مجالات تركيزك الخاصة',
     aiSuggestButton: 'اقتراح المزيد بالذكاء الاصطناعي', aiSuggestLoading: 'جارٍ إنشاء الاقتراحات…', aiSuggestBadge: 'AI',
-    aiSuggestAdd: 'إضافة', aiSuggestErrorBalance: 'الرصيد غير كافٍ.', aiSuggestErrorGeneric: 'تعذّر إنشاء الاقتراحات. حاول مجدداً.',
+    aiSuggestAdd: 'إضافة',
     aiSuggestHint: 'يستخدم هذا رموز الذكاء الاصطناعي - مجاني إذا استخدمت مفتاح API الخاص بك.'
   },
   en: {
@@ -102,7 +104,7 @@ export const copy = {
     addOwnFocusLabel: 'Add your own focus area', addOwnFocusNamePlaceholder: 'e.g. Swept liquidity levels',
     addOwnFocusDescriptionPlaceholder: 'Short description (optional)', addOwnFocusButton: 'Add', yourOwnFocuses: 'Your own focus areas',
     aiSuggestButton: 'Suggest more with AI', aiSuggestLoading: 'Generating suggestions…', aiSuggestBadge: 'AI',
-    aiSuggestAdd: 'Add', aiSuggestErrorBalance: 'Insufficient balance.', aiSuggestErrorGeneric: "Couldn't generate suggestions. Try again.",
+    aiSuggestAdd: 'Add',
     aiSuggestHint: 'This uses AI tokens - free if you use your own API key.'
   },
   es: {
@@ -128,7 +130,7 @@ export const copy = {
     addOwnFocusLabel: 'Añade tu propia área de enfoque', addOwnFocusNamePlaceholder: 'p. ej.: Niveles de liquidez barridos',
     addOwnFocusDescriptionPlaceholder: 'Descripción breve (opcional)', addOwnFocusButton: 'Añadir', yourOwnFocuses: 'Tus propias áreas de enfoque',
     aiSuggestButton: 'Sugerir más con IA', aiSuggestLoading: 'Generando sugerencias…', aiSuggestBadge: 'IA',
-    aiSuggestAdd: 'Añadir', aiSuggestErrorBalance: 'Saldo insuficiente.', aiSuggestErrorGeneric: 'No se pudieron generar sugerencias. Inténtalo de nuevo.',
+    aiSuggestAdd: 'Añadir',
     aiSuggestHint: 'Esto usa tokens de IA - gratis si usas tu propia clave API.'
   }
 };
@@ -283,7 +285,7 @@ export function AnalysisProfileOnboarding({ mode = 'first-run', existingProfile,
   const [newFocusDescription, setNewFocusDescription] = React.useState('');
   const [aiSuggestions, setAiSuggestions] = React.useState([]);
   const [aiSuggestLoading, setAiSuggestLoading] = React.useState(false);
-  const [aiSuggestError, setAiSuggestError] = React.useState('');
+  const [aiSuggestError, setAiSuggestError] = React.useState(null); // { code, status? } of the last failed suggestion request
   const stepRef = React.useRef(step);
   const completeRef = React.useRef(null);
   stepRef.current = step;
@@ -359,7 +361,7 @@ export function AnalysisProfileOnboarding({ mode = 'first-run', existingProfile,
     const client = window.TradeJournalAnalysisProfileAI;
     if (!client || aiSuggestLoading) return;
     setAiSuggestLoading(true);
-    setAiSuggestError('');
+    setAiSuggestError(null);
     try {
       const result = await client.suggestFocuses({
         primaryStyleId, secondaryStyleIds, customMethodNotes, language: activeLang,
@@ -367,7 +369,7 @@ export function AnalysisProfileOnboarding({ mode = 'first-run', existingProfile,
       });
       setAiSuggestions((prev) => prev.concat(result.suggestions));
     } catch (error) {
-      setAiSuggestError(error && error.code === 'WALLET_INSUFFICIENT_BALANCE' ? tr(activeLang, 'aiSuggestErrorBalance') : tr(activeLang, 'aiSuggestErrorGeneric'));
+      setAiSuggestError(toAiError(error));
     } finally {
       setAiSuggestLoading(false);
     }
@@ -714,7 +716,7 @@ export function AnalysisProfileOnboarding({ mode = 'first-run', existingProfile,
               </Button>
               <span style={{ fontSize: 10.5, color: 'var(--text-dim)' }}>{tr(activeLang, 'aiSuggestHint')}</span>
             </div>
-            {aiSuggestError && <span style={{ fontSize: 11.5, color: 'var(--danger)' }}>{aiSuggestError}</span>}
+            <AiErrorNotice lang={activeLang} error={aiSuggestError} onRetry={regenerateFocusSuggestions} busy={aiSuggestLoading} />
             {aiSuggestions.length > 0 && (
               <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
                 {aiSuggestions.map((s) => (

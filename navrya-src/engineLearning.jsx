@@ -2,6 +2,8 @@ import React from 'react';
 import { Panel } from '../public/pages/shared/navrya/components/core/Panel.jsx';
 import { Icon } from '../public/pages/shared/navrya/components/core/Icon.jsx';
 import { Button } from '../public/pages/shared/navrya/components/forms/Button.jsx';
+import { AiErrorNotice } from './analysisProfileAiStatus.jsx';
+import { toAiError } from './analysisProfileAiErrors.js';
 import { trt, trDigits } from './analysisProfileTrainingCopy.js';
 
 // "Teach the engine" - the Analysis Profile engine-memory learning loop's UI (ARCHITECTURE.md
@@ -62,7 +64,7 @@ export function EngineLearningPanel({ lang, profile, onChanged, preset, onTaught
   const [priorities, setPriorities] = React.useState([]);
   const [understandingText, setUnderstandingText] = React.useState('');
   const [applyUnderstanding, setApplyUnderstanding] = React.useState(false);
-  const [error, setError] = React.useState('');
+  const [error, setError] = React.useState(null); // { code, status? } of the last failed teaching request
   const [notice, setNotice] = React.useState('');
   const noticeTimer = React.useRef(null);
   React.useEffect(() => () => { if (noticeTimer.current) window.clearTimeout(noticeTimer.current); }, []);
@@ -93,7 +95,7 @@ export function EngineLearningPanel({ lang, profile, onChanged, preset, onTaught
     const client = aiClient();
     const profiles = store();
     if (!client || !profiles || (requiresTypedText && !trimmed) || phase === 'working') return;
-    setPhase('working'); setError(''); setNotice('');
+    setPhase('working'); setError(null); setNotice('');
     try {
       // A stored PDF is only downloaded now, on the explicit click - and a failure to load it is
       // reported before any billed call is made.
@@ -118,9 +120,8 @@ export function EngineLearningPanel({ lang, profile, onChanged, preset, onTaught
       profiles.settleEvents().then(changed);
     } catch (caught) {
       setPhase('idle');
-      setError(caught && caught.code === 'WALLET_INSUFFICIENT_BALANCE' ? trt(lang, 'aiErrorBalance')
-        : caught && caught.code === 'MODEL_PDF_UNSUPPORTED' ? trt(lang, 'sourceErrPdfProvider')
-          : trt(lang, 'aiErrorGeneric'));
+      // Each failure kind (an empty wallet, an expired session, a dead proxy, a PDF-incompatible model, ...) maps to its own message.
+      setError(toAiError(caught));
     }
   }
 
@@ -214,7 +215,7 @@ export function EngineLearningPanel({ lang, profile, onChanged, preset, onTaught
               <StepRow working label={trt(lang, 'stepUpdate')} />
             </div>
           )}
-          {error && <span style={{ fontSize: 12, color: 'var(--danger)' }}>{error}</span>}
+          <AiErrorNotice lang={lang} error={error} onRetry={teach} busy={phase === 'working'} />
           {notice && <span style={{ fontSize: 12, color: 'var(--success)' }}>{notice}</span>}
         </div>
 
