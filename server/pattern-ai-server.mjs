@@ -89,6 +89,19 @@ function resolveProviderName(provider) {
   return Object.prototype.hasOwnProperty.call(providerEnvKey, provider) ? provider : 'openai';
 }
 
+// The ONE definition of "which model will this call actually use": the request's own model if it
+// named one, else the admin-configured runtime model, else the .env model, else the code default.
+// callProvider() uses it for the real call and reserveTargetFor() uses it to price the wallet
+// hold, so the two can never drift apart - a hold priced against a different model than the one
+// that serves the call is the exact bug this replaced. `configuredModels` is the admin override map
+// (adminModelOverrides()), passed in so this stays a pure, synchronous function.
+function effectiveModelFor(provider, modelOverride, configuredModels) {
+  const configured = configuredModels && typeof configuredModels[provider] === 'string' ? configuredModels[provider].trim() : '';
+  return (typeof modelOverride === 'string' && modelOverride.trim())
+    ? modelOverride.trim()
+    : (configured || process.env[providerEnvModel[provider]] || providerDefaultModel[provider]);
+}
+
 // Bridge to the admin panel's server-side AI keys (server/admin/) WITHOUT giving this
 // deliberately DB-free gateway a direct Postgres dependency: a small internal HTTP call to
 // the Community API's own /internal/admin-ai-keys route (protected by a shared secret, not
@@ -485,6 +498,19 @@ async function internalWalletCallWithRetry(path, payload, attempts = 3) {
 // Fail CLOSED, same posture as verifySession() above - an unreachable Community API must never
 // be treated as "the user has funds", or every AI call would silently become free the moment the
 // billing service is down.
+// The provider and model a wallet hold must be priced against for a text/vision route: the ones
+// callProvider() will actually resolve for this same request body. A client that names neither (the
+// Analysis Profile client did, whenever the trader had no personal API key) used to be priced
+// against `undefined`, which can never match a price row, so every platform-billed call failed
+// closed with PROVIDER_PRICING_NOT_CONFIGURED whatever an admin had configured. The model lookup
+// is skipped when the request already names one, so the common path costs no extra bridge call.
+async function reserveTargetFor(body) {
+  const provider = resolveProviderName(body && body.provider);
+  const requested = body && typeof body.model === 'string' ? body.model : '';
+  const configuredModels = requested.trim() ? null : await adminModelOverrides();
+  return { provider, model: effectiveModelFor(provider, requested, configuredModels) };
+}
+
 async function reserveWalletFundsForCall({ userId, feature, provider, model, payload }) {
   try {
     return await internalWalletCall('/internal/wallet/reserve', { userId, feature, provider, model, payload });
@@ -1107,12 +1133,9 @@ async function callProvider(providerInput, apiKeyOverride, modelOverride, payloa
     if (!key) key = process.env[providerEnvKey[provider]] || '';
     if (!key) throw new Error(providerEnvKey[provider] + '_MISSING');
     const configuredModels = await adminModelOverrides();
-    const configuredModel = configuredModels && typeof configuredModels[provider] === 'string' ? configuredModels[provider].trim() : '';
     // Request-level model selection remains a user preference. Admin controls the runtime
     // fallback used by health checks and requests without a model, ahead of .env and code.
-    const model = (typeof modelOverride === 'string' && modelOverride.trim())
-      ? modelOverride.trim()
-      : (configuredModel || process.env[providerEnvModel[provider]] || providerDefaultModel[provider]);
+    const model = effectiveModelFor(provider, modelOverride, configuredModels);
     const providerCallStartedAt = Date.now();
     const outcome = provider === 'openai' ? await callOpenAI(payload, key, model, externalSignal)
       : provider === 'anthropic' ? await callAnthropic(payload, key, model, externalSignal)
@@ -4665,10 +4688,12 @@ const server = http.createServer(async (request, response) => {
     // visualizeScenario()/visualizeAnalysis() actually return and what settleWalletFundsForCall()
     // below already correctly reads from that result.
     const isImageGeneration = IMAGE_GENERATION_ROUTES.has(request.url);
-    const reserveProvider = isImageGeneration ? 'openai' : body.provider;
-    const reserveModel = isImageGeneration ? IMAGE_EDIT_MODEL : body.model;
     if (billedFeature && !isByok && aiWalletEnforced()) {
-      const gate = await reserveWalletFundsForCall({ userId: session.userId, feature: billedFeature, provider: reserveProvider, model: reserveModel, payload: analysisProfileReservationPayload(request.url, body) });
+      // Every other route is priced against what callProvider() will actually resolve for this body
+      // (reserveTargetFor), so a request that names no provider or model is still priced, on the
+      // same platform default that will serve it.
+      const reserveTarget = isImageGeneration ? { provider: 'openai', model: IMAGE_EDIT_MODEL } : await reserveTargetFor(body);
+      const gate = await reserveWalletFundsForCall({ userId: session.userId, feature: billedFeature, provider: reserveTarget.provider, model: reserveTarget.model, payload: analysisProfileReservationPayload(request.url, body) });
       if (!gate.ok) {
         const status = gate.reason === 'WALLET_INSUFFICIENT_BALANCE' ? 402 : 503;
         return json(response, status, { error: gate.reason || 'WALLET_SERVICE_UNAVAILABLE' });
