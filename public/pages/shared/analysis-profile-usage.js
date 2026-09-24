@@ -15,6 +15,11 @@
  *   concepts   - the profile's concepts (titles for the per-concept bars)
  *   timeZone   - IANA zone the trader's calendar days are read in; now - the reference instant
  *
+ * Engines: every run row carries the provider and model that produced it, and every scenario carries the exact analysisId of the run that
+ * proposed it, so runs and outcomes can be broken down per engine (provider + model) with no guessing. A scenario is attributed to an
+ * engine ONLY through that exact analysisId; one whose run is not in the recorded rows is counted as unmatched, never spread over the
+ * engines. An engine's accuracy exists only once some of its scenarios are resolved - "it ran" is never reported as "it worked".
+ *
  * Honesty rules this file follows: every number is derived from a real record or is null (never a
  * placeholder zero that reads as "measured and nothing happened"); accuracy is confirmed / (confirmed +
  * invalidated) - scenarios still open are NOT counted as either; a sample below SMALL_SAMPLE resolved
@@ -189,6 +194,64 @@
     return { sessions: SESSIONS.slice(), weekdays: WEEKDAYS.slice(), table: table, placed: placed, unplaced: unplaced, max: max };
   }
 
+  // ---- engines (provider + model) ---------------------------------------------------------------------------------------
+
+  function text(v) { return v == null ? '' : String(v).trim(); }
+  // One engine = one provider + model pair as recorded on the run. A blank half stays blank ("not recorded"); it is never replaced by a guess.
+  function engineKey(row) { return text(row.provider).toLowerCase() + '/' + text(row.model); }
+  function emptyTypes() { return { initial: 0, update: 0, scenario_evaluation: 0, other: 0 }; }
+  function countType(byType, analysisType) { if (analysisType in byType && analysisType !== 'other') byType[analysisType] += 1; else byType.other += 1; }
+
+  function engines(analyses, attributed) {
+    var byKey = {}; var order = []; var keyByAnalysisId = {};
+    arr(analyses).forEach(function (row) {
+      var key = engineKey(row);
+      if (!Object.prototype.hasOwnProperty.call(byKey, key)) {
+        byKey[key] = {
+          key: key, provider: text(row.provider) || null, model: text(row.model) || null, runs: 0, byType: emptyTypes(), firstRunAt: null, lastRunAt: null,
+          scenarios: { added: 0, confirmed: 0, invalidated: 0, open: 0, resolved: 0 }
+        };
+        order.push(key);
+      }
+      var slot = byKey[key];
+      slot.runs += 1; countType(slot.byType, row.analysisType);
+      var at = toMs(row.occurredAt);
+      if (at != null) {
+        if (slot.firstRunAt == null || at < slot.firstRunAt) slot.firstRunAt = at;
+        if (slot.lastRunAt == null || at > slot.lastRunAt) slot.lastRunAt = at;
+      }
+      var id = text(row.analysisId);
+      if (id && !Object.prototype.hasOwnProperty.call(keyByAnalysisId, id)) keyByAnalysisId[id] = key;
+    });
+
+    var matched = 0; var unmatched = 0;
+    arr(attributed).forEach(function (item) {
+      var id = text(item.scenario && item.scenario.aiSource && item.scenario.aiSource.analysisId);
+      if (!id || !Object.prototype.hasOwnProperty.call(keyByAnalysisId, id)) { unmatched += 1; return; }
+      var slot = byKey[keyByAnalysisId[id]];
+      matched += 1; slot.scenarios.added += 1;
+      if (item.outcome === 'confirmed') { slot.scenarios.confirmed += 1; slot.scenarios.resolved += 1; }
+      else if (item.outcome === 'invalidated') { slot.scenarios.invalidated += 1; slot.scenarios.resolved += 1; }
+      else slot.scenarios.open += 1;
+    });
+
+    var total = arr(analyses).length;
+    var list = order.map(function (key) {
+      var slot = byKey[key]; var sc = slot.scenarios;
+      return {
+        key: key, provider: slot.provider, model: slot.model, runs: slot.runs, runShare: pct(slot.runs, total), byType: slot.byType,
+        firstRunAt: slot.firstRunAt == null ? null : new Date(slot.firstRunAt).toISOString(),
+        lastRunAt: slot.lastRunAt == null ? null : new Date(slot.lastRunAt).toISOString(),
+        scenarios: {
+          added: sc.added, confirmed: sc.confirmed, invalidated: sc.invalidated, open: sc.open, resolved: sc.resolved,
+          // null until at least one of THIS engine's scenarios is resolved: an engine that only ran has no accuracy, not 0%.
+          accuracy: pct(sc.confirmed, sc.resolved), smallSample: sc.resolved > 0 && sc.resolved < SMALL_SAMPLE
+        }
+      };
+    }).sort(function (a, b) { return b.runs - a.runs || (a.key < b.key ? -1 : a.key > b.key ? 1 : 0); });
+    return { list: list, matchedScenarios: matched, unmatchedScenarios: unmatched };
+  }
+
   function topBy(items, keyOf, limit) {
     var counts = {}; var order = [];
     items.forEach(function (item) {
@@ -238,8 +301,8 @@
       return (entry && entry.timeframe) || session.timeframe || '';
     };
 
-    var byType = { initial: 0, update: 0, scenario_evaluation: 0, other: 0 };
-    analyses.forEach(function (row) { if (row.analysisType in byType && row.analysisType !== 'other') byType[row.analysisType] += 1; else byType.other += 1; });
+    var byType = emptyTypes();
+    analyses.forEach(function (row) { countType(byType, row.analysisType); });
 
     var trend = weeklyAccuracy(attributed.filter(function (i) { return i.outcome !== 'open'; }), nowMs, zone);
 
@@ -256,6 +319,7 @@
         { key: 'analyses', v: analyses.length }, { key: 'scenarios', v: attributed.length },
         { key: 'resolved', v: resolved }, { key: 'confirmed', v: confirmed }
       ],
+      engines: engines(analyses, attributed),
       accuracyTrend: trend.rates, weeklyResolved: trend.weeklyResolved,
       adherence: adherence(analyses, opts.concepts),
       trades: tradeStats(opts.trades, scenarioIds),
@@ -269,7 +333,7 @@
   window.TradeJournalAnalysisProfileUsage = {
     compute: compute,
     // exposed for tests and for other reports that need the same calendar-day arithmetic
-    helpers: { dayNumber: dayNumber, weekdayIndex: weekdayIndex, weeksAgo: weeksAgo, scenarioOutcome: scenarioOutcome, resolvedAtMs: resolvedAtMs, safeZone: safeZone },
+    helpers: { engineKey: engineKey, dayNumber: dayNumber, weekdayIndex: weekdayIndex, weeksAgo: weeksAgo, scenarioOutcome: scenarioOutcome, resolvedAtMs: resolvedAtMs, safeZone: safeZone },
     SESSIONS: SESSIONS, WEEKDAYS: WEEKDAYS, SMALL_SAMPLE: SMALL_SAMPLE, TREND_WEEKS: TREND_WEEKS
   };
 }());
