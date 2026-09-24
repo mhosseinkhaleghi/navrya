@@ -1963,6 +1963,11 @@ Each feature i18n module exposes a `window` API with `t()`, current language, di
     link - or the old value instead of the cleared `null` - won); `null` stays the "no link" value.
     `tests/strategy-analysis-profile-link-ui.test.mjs` runs the real handler and the hub's real `onSave()` against the
     real store.
+  - **AI route proxying:** every prefix `server/pattern-ai-server.mjs` answers must be listed in `deploy/Caddyfile`'s `@ai`
+    matcher AND `vite.config.js`'s proxy. `/api/analysis-profiles/*` was in neither, so on production all five profile AI
+    routes fell through to `community-api` and returned `NOT_FOUND / HTTP 404`; `tests/ai-route-proxy-contract.test.mjs`
+    now derives the served paths from the AI server and fails when one is not proxied. A 404/405/`NOT_FOUND` from an AI
+    route is classified as a connectivity failure, not a generic one.
   - **AI connectivity:** the five routes (suggest, ingest, chat, preview, read-source) resolve
     `TradeJournalPatternAIConfig.baseUrl` at REQUEST time (`apiBase()` in `analysis-profile-ai.js`), so a base URL that
     is set after the script loaded is honoured. `navrya-src/analysisProfileAiErrors.js` maps every failure to one kind
@@ -1989,7 +1994,12 @@ Each feature i18n module exposes a `window` API with `t()`, current language, di
     once its own scenarios are resolved; there is no "success" field - a run is usage, not quality.
     `analysisProfileMaturity.js` describes what a profile has been taught (enabled concepts by priority/origin,
     understanding version, taught sources and lessons - classified by the Memory Sync's own summaries) as counts plus
-    a milestone checklist; it has no score, and unreadable data is "not recorded", not a missed milestone.
+    a milestone checklist; it has no score, and unreadable data is "not recorded", not a missed milestone. The report is
+    ALWAYS drawn in full, like the Patterns report - with nothing recorded every panel keeps its place (counts read 0,
+    rates "-", charts are dashed placeholders that say why) under a notice - and it lays itself out against its own
+    column with container queries (`public/pages/shared/navrya/profile-report.css`): exactly six KPI tiles (analyses run
+    + last 30 days, scenarios generated, success rate = confirmed / resolved, mandatory concepts applied, linked win rate,
+    linked average R) in 2x3 / 3x2 / 6x1, panel pairs at equal height. Training tokens moved to the learning panel.
   - **Knowledge cards:** each source is a `SourceCard` (kind-specific icon/colour, status badge, host or file, digest,
     Add -> Read/Stored -> Taught progress, actions pinned bottom). `analysisProfileKnowledgeCards.js` holds the pure
     rules (state, steps, host, size, `safeHttpUrl`). Text is only ever rendered as text, only http(s) links are
