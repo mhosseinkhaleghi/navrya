@@ -42,20 +42,27 @@
   }
   AnalysisProfileAIError.prototype = Object.create(Error.prototype);
 
-  // Bring-your-own-key: when the trader has configured their own provider key (Settings), every
-  // request also carries it plus their chosen provider/model, and the gateway treats the call as
-  // BYOK - never wallet-billed (server/pattern-ai-server.mjs's `isByok`). With no personal key
-  // nothing is added: the platform default provider serves the call and it is billed per the token
-  // policy. Same convention the Session analysis and Analysis Map AI already follow, which is what
-  // makes the UI's "free with your own API key" hint actually true.
+  // Every request carries the provider and model the trader selected in AI settings - the same
+  // convention the AI dock and Session analysis follow - so a platform-billed call is priced and
+  // served on a model the trader can already use. The personal API key is added ONLY when one is
+  // configured: that alone makes the gateway treat the call as BYOK and never wallet-bill it
+  // (server/pattern-ai-server.mjs's `isByok`), which is what makes the UI's "free with your own API
+  // key" hint true. This used to send nothing at all without a key, on the assumption that the
+  // gateway would fall back to a platform default; its wallet gate priced that as `undefined`
+  // instead, so every wallet-funded teach/suggest/chat/preview failed with
+  // PROVIDER_PRICING_NOT_CONFIGURED. The gateway now also resolves an omitted provider/model itself.
   function providerContext() {
     try {
       var settings = window.TradeJournalAISettingsStore;
-      if (!settings || typeof settings.activeProvider !== 'function' || typeof settings.getKey !== 'function') return {};
+      if (!settings || typeof settings.activeProvider !== 'function') return {};
       var provider = settings.activeProvider();
-      var apiKey = provider ? settings.getKey(provider) : '';
-      if (!apiKey) return {};
-      return { provider: provider, model: typeof settings.activeModel === 'function' ? settings.activeModel() : undefined, apiKey: apiKey };
+      if (!provider) return {};
+      var context = { provider: provider };
+      var model = typeof settings.activeModel === 'function' ? settings.activeModel() : null;
+      if (model) context.model = model;
+      var apiKey = typeof settings.getKey === 'function' ? settings.getKey(provider) : '';
+      if (apiKey) context.apiKey = apiKey;
+      return context;
     } catch (_) { return {}; }
   }
 

@@ -163,14 +163,43 @@ test('with a personal provider key configured, EVERY request carries provider/mo
   }
 });
 
-test('with NO personal key, no apiKey/provider/model is sent at all - the platform default serves the call and it is billed per the token policy', async () => {
+test('with NO personal key, the selected provider and model are STILL sent - only the apiKey is withheld - so the wallet can price the call', async () => {
+  // Regression for the production teach failure "PROVIDER_PRICING_NOT_CONFIGURED - HTTP 503": this
+  // client used to send nothing at all without a personal key, so the gateway's wallet gate priced
+  // the call against an undefined provider and model, which can never match a price row. The AI dock
+  // and Session analysis both send provider/model always and the key only when one exists; so does this.
+  const bodies = [];
+  const { client, window: sandboxWindow } = await loadClient({ fetchImpl: async (url, options) => { bodies.push(JSON.parse(options.body)); return { ok: true, json: async () => ({ suggestions: [], updatedUnderstanding: '', conceptsProposed: [], reply: '', proposals: [], observations: [], provider: 'openai', usage: null }) }; } });
+  sandboxWindow.TradeJournalAISettingsStore = { activeProvider: () => 'openai', activeModel: () => 'gpt-5.6-luna', getKey: () => '' };
+  await client.suggestFocuses({ primaryStyleId: 'price_action' });
+  await client.suggestConcepts({ primaryStyleId: 'price_action' });
+  await client.ingestLearning({ kind: 'source', text: 'a page digest' });
+  assert.equal(bodies.length, 3);
+  for (const body of bodies) {
+    assert.equal(body.provider, 'openai');
+    assert.equal(body.model, 'gpt-5.6-luna');
+    assert.equal('apiKey' in body, false, 'no key means the gateway must bill the wallet, never treat it as BYOK');
+  }
+});
+
+test('with no model selectable the provider is still sent and no undefined model is serialised', async () => {
   let body = null;
   const { client, window: sandboxWindow } = await loadClient({ fetchImpl: async (url, options) => { body = JSON.parse(options.body); return { ok: true, json: async () => ({ suggestions: [], provider: 'openai', usage: null }) }; } });
-  sandboxWindow.TradeJournalAISettingsStore = { activeProvider: () => 'openai', activeModel: () => 'gpt-5.6', getKey: () => '' };
+  sandboxWindow.TradeJournalAISettingsStore = { activeProvider: () => 'openai', activeModel: () => null, getKey: () => '' };
   await client.suggestFocuses({ primaryStyleId: 'price_action' });
+  assert.equal(body.provider, 'openai');
+  assert.equal('model' in body, false);
   assert.equal('apiKey' in body, false);
+});
+
+test('read-source stays free: it carries no provider, model or key at all', async () => {
+  let body = null;
+  const { client, window: sandboxWindow } = await loadClient({ fetchImpl: async (url, options) => { body = JSON.parse(options.body); return { ok: true, json: async () => ({ type: 'website', url: 'https://example.com/', title: 't', digest: 'd' }) }; } });
+  sandboxWindow.TradeJournalAISettingsStore = { activeProvider: () => 'openai', activeModel: () => 'gpt-5.6', getKey: () => 'sk-own' };
+  await client.readSource({ url: 'https://example.com/' });
   assert.equal('provider' in body, false);
   assert.equal('model' in body, false);
+  assert.equal('apiKey' in body, false);
 });
 
 test('a missing or throwing settings store never breaks the call - it simply falls back to the platform default', async () => {
