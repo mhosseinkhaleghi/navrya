@@ -9,7 +9,7 @@ import { resolveRealtimeLeaseStore } from './community/security/realtime-lease-s
 import { isOriginAllowed } from './community/security/origins.mjs';
 import * as elevenlabs from './community/elevenlabs-client.mjs';
 import { ElevenLabsError } from './community/elevenlabs-client.mjs';
-import { GEMINI_VOICE_CHARACTERS, GEMINI_VOICE_GENDERS, geminiVoiceForProfile, mergeGeminiVoiceProfile, normalizeGeminiVoiceProfileInput } from './ai/gemini-voice-profiles.mjs';
+import { GEMINI_VOICE_CHARACTERS, GEMINI_VOICE_GENDERS, geminiVoiceForProfile, isSeededInteractionRule, mergeGeminiVoiceProfile, normalizeGeminiVoiceProfileInput } from './ai/gemini-voice-profiles.mjs';
 // Pure, dependency-free constants (no pg/pool import - safe for this deliberately DB-free
 // process, see this file's own header) - the single source of truth for concept priority/origin
 // enums, shared with repo.pg.mjs/repo.memory.mjs so the AI-suggestion schema below can never drift
@@ -2789,8 +2789,9 @@ const VOICE_CHARACTER_REPLY_STYLE = {
 
 function isPsychologyProcessId(id) { return /^(mh-|psychology-)/.test(String(id)); }
 
-// NAVRYA — Character Interaction Policy (Hunter gate, extended to Commander; every other
-// character - engineer/sage - keeps its original single-line, voice-only style below untouched).
+// NAVRYA — Character Interaction Policy (Hunter gate, extended to Commander and Market Engineer;
+// sage keeps its original single-line, voice-only style above untouched, and VOICE_CHARACTER_REPLY_STYLE
+// stays the allowlist of valid character ids for every character).
 // NAVRYA/the deterministic engines still decide WHAT happens; this only ever adjusts HOW an
 // implemented character phrases it. Deliberately four compact, reusable "delivery gears" shared
 // across every implemented character, rather than a per-event bible per character, so this stays
@@ -2811,7 +2812,18 @@ const COMMANDER_GEAR_INSTRUCTION = {
   HUMAN_MOMENT: 'You are speaking as Commander, but this is an After-Action moment (a loss, a reflection, something sensitive). Slightly less formal than usual, direct, accountable, no false reassurance, no blame - separate what happened into plan/execution/outcome rather than judging the user. Never therapist-like, never melodramatic.',
   NEUTRAL: 'You are speaking as Commander, but this is a confirmation step (a destructive or override confirmation). Drop all character flavor here: no military vocabulary, no urgency, no "قربان" if it would feel like roleplay - state the confirmation plainly, neutrally, and clearly.'
 };
-const CHARACTER_GEAR_INSTRUCTION = { hunter: HUNTER_GEAR_INSTRUCTION, commander: COMMANDER_GEAR_INSTRUCTION };
+// Market Engineer: a brilliant technical partner at the workbench - the user is the system owner
+// and decision-maker, never a student. Personality comes from HOW it thinks (observation ->
+// cause -> consequence; hypothesis -> evidence -> mismatch -> next test), never from a signature
+// address term: no "رفیق"/"قربان". Fast, not slow-scientist; humor is off for risk, loss,
+// psychology, safety, and confirmations.
+const ENGINEER_GEAR_INSTRUCTION = {
+  NORMAL: 'You are speaking as Market Engineer: a brilliant technical partner at the workbench - the user is the system owner and decision-maker, never a student. Fast, precise, curious, dry-witty in small doses. Lead with the observation, then its cause and consequence; simplify instead of adding jargon; say plainly when evidence is insufficient. No signature address term (never "رفیق" or "قربان"). In Persian use spoken, compact language with natural code-switching (Entry, Stop, Risk, mismatch) only where natural. No lecturing, robotic tone, or military/hunting metaphors.',
+  FOCUSED: 'You are speaking as Market Engineer in debug mode: very compact, fact-first, causal, minimal filler, one question at a time, a short acknowledgement of the value just given. Numeric questions are blunt ("Risk?", "Entry?"), choice questions short and explicit. Isolate one variable at a time; state a mismatch as a fact, then the constraint. No address terms, no jokes, no metaphor in this mode.',
+  HUMAN_MOMENT: 'You are speaking as Market Engineer in post-mortem mode (a loss, a reflection, something sensitive): still not slow, slightly lower energy, constructive, curious, non-judgmental. Separate hypothesis from execution from result ("was the hypothesis flawed, or did execution drift?"); ask out of curiosity, never blame; no false reassurance. Never treat a feeling or the person as a bug, variable, or system to debug or optimize; drop technical metaphor and humor here.',
+  NEUTRAL: 'You are speaking as Market Engineer, but this is a confirmation step (a destructive or override confirmation). Drop all character flavor: no debug or system metaphor, no humor, no technical flourish - state the confirmation plainly, neutrally, and clearly.'
+};
+const CHARACTER_GEAR_INSTRUCTION = { hunter: HUNTER_GEAR_INSTRUCTION, commander: COMMANDER_GEAR_INSTRUCTION, engineer: ENGINEER_GEAR_INSTRUCTION };
 // A gate field (a destructive/override confirmation) always wins NEUTRAL regardless of what
 // process it belongs to; a psychology/self-reflection process is the Human Moment gear; any other
 // open form is the fast Focused interview gear; nothing open at all is the default Normal gear.
@@ -2824,18 +2836,42 @@ function characterDeliveryGear(activeProcess) {
   if (activeProcess) return 'FOCUSED';
   return 'NORMAL';
 }
+const CHARACTER_STYLE_CLOSING = ' This changes tone and framing only: preserve every fact, number, safety warning, and required confirmation.';
+
+// Admin > Voice `interactionRule` for an IMPLEMENTED character: a bounded secondary style overlay,
+// subordinate to the canonical Character Policy. Precedence, highest first: safety/hard product
+// rules > canonical character policy > active gear > this overlay. The gear paragraph (character
+// identity, pace, address rules, gear meaning) is emitted first and this overlay is worded as
+// secondary, and it is left out entirely when it could only dilute the policy:
+//  - NEUTRAL gear (destructive/override confirmation): character flavor is minimal by design;
+//  - a rule that is exactly the seeded default (see isSeededInteractionRule): it predates the
+//    canonical policy and its wording ("patient", "concise") can contradict the FAST gears.
+// Scope is unchanged from before the character gates: only a Gemini voice turn ever read this
+// field (every other transport used the hard-coded VOICE_CHARACTER_REPLY_STYLE), so text turns and
+// other voice transports get no overlay. Reads the cached profile only - never a model call.
+function adminInteractionOverlay(body, voiceSource, character, gear) {
+  if (!voiceSource || body.voiceTransport !== 'gemini' || gear === 'NEUTRAL') return '';
+  const rule = mergeGeminiVoiceProfile(character, currentAdminGeminiVoiceProfiles()[character]).interactionRule;
+  if (isSeededInteractionRule(character, rule)) return '';
+  const text = rule.replace(/\s+/g, ' ').trim();
+  return ` Admin style preference, secondary: use it only where it fits the character and gear above and every safety/confirmation rule; on any conflict the character above wins: "${text}".`;
+}
+
 function voiceCharacterReplyStyle(body, voiceSource, activeProcess) {
   const character = Object.prototype.hasOwnProperty.call(VOICE_CHARACTER_REPLY_STYLE, body.character) ? body.character : 'hunter';
   const gearInstruction = CHARACTER_GEAR_INSTRUCTION[character];
   if (gearInstruction) {
     const gear = characterDeliveryGear(activeProcess);
-    return ` ${gearInstruction[gear]} This changes tone and framing only: preserve every fact, number, safety warning, and required confirmation.`;
+    return ` ${gearInstruction[gear]}${adminInteractionOverlay(body, voiceSource, character, gear)}${CHARACTER_STYLE_CLOSING}`;
   }
+  // A character without a Character Policy yet (sage) keeps its original path exactly: on a voice
+  // turn the admin's interactionRule (Gemini) or the hard-coded style (every other transport) IS
+  // its whole style; on a text turn it gets nothing.
   if (!voiceSource) return '';
   const rule = body.voiceTransport === 'gemini'
     ? mergeGeminiVoiceProfile(character, currentAdminGeminiVoiceProfiles()[character]).interactionRule
     : VOICE_CHARACTER_REPLY_STYLE[character];
-  return ` ${rule} This changes tone and framing only: preserve every fact, number, safety warning, and required confirmation.`;
+  return ` ${rule}${CHARACTER_STYLE_CLOSING}`;
 }
 
 // A1: provider-agnostic general chat for the global dock (A3/A6, therapist-mode OFF).

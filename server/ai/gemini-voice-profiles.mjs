@@ -92,6 +92,20 @@ export function mergeGeminiVoiceProfile(character, saved = {}) {
   };
 }
 
+// True when `rule` is exactly the seeded default interactionRule for `character` (whitespace-
+// insensitive). There are no seed rows in admin_gemini_voice_profiles - a row exists only once an
+// admin saves - but the admin form pre-fills the merged default text and requires a non-empty
+// interactionRule, so saving ANY other field (a voice, the speechRule) stores the default text
+// verbatim. A stored rule equal to the default therefore means "never customized", which is what
+// the Character Interaction Policy treats as a legacy seed (see pattern-ai-server.mjs's
+// adminInteractionOverlay). Compared against the live defaults, never a second copy of the text.
+export function isSeededInteractionRule(character, rule) {
+  const defaults = GEMINI_VOICE_PROFILE_DEFAULTS[character];
+  if (!defaults || typeof rule !== 'string') return false;
+  const normalize = (text) => text.replace(/\s+/g, ' ').trim();
+  return normalize(rule) === normalize(defaults.interactionRule);
+}
+
 export function normalizeGeminiVoiceProfileInput(input = {}) {
   const character = String(input.character || '');
   assertGeminiVoiceCharacter(character);

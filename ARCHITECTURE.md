@@ -2164,49 +2164,58 @@ Each feature i18n module exposes a `window` API with `t()`, current language, di
   contract, `saveVideo()` real signature/mime/size checks, image+video round trip, and
   owner/admin-only/anonymous/stranger access over the real `/uploads/ticket/*` path).
 
-### 7.27 Character Interaction Policy (Hunter gate, extended to Commander)
+### 7.27 Character Interaction Policy (Hunter gate, extended to Commander and Market Engineer)
 
 - **What changed:** before the Hunter gate, "character" only ever meant an ElevenLabs/Gemini
   voice-ID pick plus one hard-coded, voice-turn-only style line server-side - a written chat
   conversation got zero character-aware wording, even for Hunter (this app's default character).
   The Hunter gate added a small, reusable event→delivery-gear policy
-  (`NORMAL`/`FOCUSED`/`HUMAN_MOMENT`/`NEUTRAL`); a later Commander gate extended the exact same
-  architecture to a second character (no second event/gear model, no second Voice pipeline, no
-  Commander-specific business logic). `engineer`/`sage` remain byte-for-byte unchanged by both
-  gates. NAVRYA's deterministic engines (Workflow/Action/Risk/Safety/Proactive) still decide every
-  real outcome; this only ever changes wording/delivery. Full detail, the event→integration-point
-  table, and each character's own identity/example lines are in
-  `docs/ai/character-interaction-policy.md`, `docs/ai/characters/hunter.md`, and
-  `docs/ai/characters/commander.md`.
+  (`NORMAL`/`FOCUSED`/`HUMAN_MOMENT`/`NEUTRAL`); later Commander and Market Engineer (`engineer`)
+  gates extended the exact same architecture to a second and third character (no second event/gear
+  model, no second Voice pipeline, no character-specific business logic). `sage` remains
+  byte-for-byte unchanged. NAVRYA's deterministic engines (Workflow/Action/Risk/Safety/Proactive)
+  still decide every real outcome; this only ever changes wording/delivery. Full detail, the
+  event→integration-point table, and each character's own identity/example lines are in
+  `docs/ai/character-interaction-policy.md`, `docs/ai/characters/hunter.md`, `commander.md` and
+  `market-engineer.md`.
 - **No shared server/client module:** this codebase has no bundler and no existing file-sharing
   mechanism between `server/*.mjs` and `public/pages/shared/*.js` - every per-character server
-  string was already hand-authored independently of the client. Both gates follow that same
+  string was already hand-authored independently of the client. All three gates follow that same
   convention rather than inventing a new cross-runtime import: `server/pattern-ai-server.mjs`'s
-  `CHARACTER_GEAR_INSTRUCTION` map (`HUNTER_GEAR_INSTRUCTION`/`COMMANDER_GEAR_INSTRUCTION`) +
+  `CHARACTER_GEAR_INSTRUCTION` map (`HUNTER_`/`COMMANDER_`/`ENGINEER_GEAR_INSTRUCTION`) +
   `characterDeliveryGear()`, and `public/pages/shared/character-interaction-policy.js`'s
-  `IMPLEMENTED_CHARACTERS` set, implement the same event→gear model independently, kept in sync by
-  hand.
+  `IMPLEMENTED_CHARACTERS` set + per-character `PHRASES` tables, implement the same event→gear model
+  independently, kept in sync by hand and guarded by `tests/character-policy-parity.test.mjs`.
 - **Real integration points:** the LLM prompt fragment in `dockChat()` (general Q&A, product
   explanation, data answers, and form-question/gate-confirmation wording - now applied on text
-  turns too, not just voice, for both Hunter and Commander); `ai-companion-orchestrator.js`'s
-  `voiceOpening()` (character-specific greeting variants via new `_hunter`/`_commander`-suffixed
-  `ai-i18n.js` keys); `chat-dock-core.js`'s `buildProactiveReply()` (a short character-specific
-  opener/override question around the Proactive Engine's own unmodified finding text);
-  `chatDockView.jsx`'s `onAnalysisReady()` (a compact lead-in prepended to the model's real,
-  unchanged analysis headline).
+  turns too, not just voice, for every implemented character); `ai-companion-orchestrator.js`'s
+  `voiceOpening()` (character-specific greeting variants via `_hunter`/`_commander`/`_engineer`-
+  suffixed `ai-i18n.js` keys); `chat-dock-core.js`'s `buildProactiveReply()` (a short character-
+  specific opener/override question around the Proactive Engine's own unmodified finding text;
+  Market Engineer also gets one arithmetic DIFFERENCE line derived from that finding's own
+  evidence); `chatDockView.jsx`'s `onAnalysisReady()` (a compact lead-in prepended to the model's
+  real, unchanged analysis headline).
+- **Admin `interactionRule` is a bounded overlay, subordinate to the policy:** for an implemented
+  character on a Gemini voice turn, the admin's saved rule is appended after the gear paragraph as
+  one clearly secondary sentence (`adminInteractionOverlay()`); a rule equal to the seeded default
+  is skipped (`isSeededInteractionRule()` in `server/ai/gemini-voice-profiles.mjs`), NEUTRAL gear
+  omits it, and Sage keeps its raw-rule path. Precedence: safety/hard rules > canonical policy >
+  gear > overlay. `speechRule` and voice routing are untouched (see the policy doc).
 - **Safety/gate override is structural:** a destructive/override confirmation or an explicit
   safety sensitivity always resolves to the `NEUTRAL` gear (no metaphor, no humor, no military
   vocabulary), and a genuine crisis-safety turn never reaches this policy layer at all
   (`mental-health-safety.js`'s preflight in `chat-dock-core.js`'s `sendChat()` already returns
   before any reply is composed).
-- **Tests:** `character-interaction-policy.test.mjs`/`commander-character-policy.test.mjs`
-  (event→gear mapping, the safety/gate override, Persian quality checks, Hunter/Commander mutual
-  non-interference), `hunter-character-server-prompt.test.mjs`/
-  `commander-character-server-prompt.test.mjs` (server-side gear selection per
-  `activeProcess`/`nextQuestion.role`, engineer/sage unaffected), `hunter-character-client-
-  integration.test.mjs`/`commander-character-client-integration.test.mjs` (real `ai-i18n.js`
-  end-to-end voice-opening selection, and the best-effort fallback when the shared module isn't
-  loaded).
+- **Tests:** per character, `*-character-policy.test.mjs` (event→gear mapping, the safety/gate
+  override, Persian quality checks, mutual non-interference), `*-character-server-prompt.test.mjs`
+  (server-side gear selection per `activeProcess`/`nextQuestion.role`, one model call, bounded
+  prompt size, prompt = unstyled prompt + one suffix) and `*-character-client-integration.test.mjs`
+  (real `ai-i18n.js` voice-opening selection, the best-effort no-policy fallback, and - for Market
+  Engineer - the real risk conflict through `chat-dock-core.js` for all four characters asserting
+  an identical Risk decision); plus `character-policy-parity.test.mjs`, the client/server drift
+  guard (same characters implemented and same event→gear on both sides); and
+  `character-admin-interaction-rule.test.mjs` (overlay precedence, seed skipping, NEUTRAL omission,
+  Sage unchanged, one model call, bounded prompt growth).
 
 ### 7.28 Subscription Discount Codes & Wallet Bonus
 

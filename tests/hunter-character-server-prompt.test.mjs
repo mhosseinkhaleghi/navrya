@@ -4,6 +4,10 @@ import test, { after, afterEach } from 'node:test';
 // Character Interaction Policy (Hunter gate): server-side delivery-gear resolution in
 // server/pattern-ai-server.mjs (HUNTER_GEAR_INSTRUCTION/hunterDeliveryGear/voiceCharacterReplyStyle).
 // Same directly-exported dockChat() convention as tests/ai-dock-chat-quality.test.mjs.
+// The AI server binds its port on import; every test process that imports it must use an ephemeral
+// port (the convention tests/ai-gateway-auth.test.mjs and 15 others follow) or parallel test files
+// collide on the default 8787 (EADDRINUSE crashes the later file).
+process.env.PATTERN_AI_PORT = '0';
 const serverModule = await import('../server/pattern-ai-server.mjs');
 const { dockChat } = serverModule;
 const server = serverModule.default;
@@ -47,10 +51,10 @@ test('a plain text turn (no source, no character) defaults to Hunter\'s NORMAL g
   assert.match(systemText, /preserve every fact, number, safety warning, and required confirmation/);
 });
 
-test('a character without a Character Interaction Policy (engineer) on a text turn gets no style at all, exactly as before', async () => {
+test('a character without a Character Interaction Policy (sage) on a text turn gets no style at all, exactly as before', async () => {
   const getBody = captureOpenAIRequest({ reply: 'ok' });
   await withEnv({ OPENAI_API_KEY: 'test-key' }, async () => {
-    await dockChat({ provider: 'openai', message: 'hi', language: 'en', character: 'engineer' });
+    await dockChat({ provider: 'openai', message: 'hi', language: 'en', character: 'sage' });
   });
   const systemText = getBody().input[0].content[0].text;
   assert.doesNotMatch(systemText, /speaking as/);
@@ -59,10 +63,10 @@ test('a character without a Character Interaction Policy (engineer) on a text tu
 test('an explicit non-Hunter character on a VOICE turn still gets its own original one-line style, unchanged', async () => {
   const getBody = captureOpenAIRequest({ reply: 'ok', voiceReply: 'ok' });
   await withEnv({ OPENAI_API_KEY: 'test-key' }, async () => {
-    await dockChat({ provider: 'openai', message: 'hi', language: 'en', character: 'engineer', source: 'voice' });
+    await dockChat({ provider: 'openai', message: 'hi', language: 'en', character: 'sage', source: 'voice' });
   });
   const systemText = getBody().input[0].content[0].text;
-  assert.match(systemText, /You are speaking as the Market Engineer/);
+  assert.match(systemText, /You are speaking as the Market Master/);
 });
 
 // --- delivery gear classification ---

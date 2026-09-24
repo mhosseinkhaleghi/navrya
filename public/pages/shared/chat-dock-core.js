@@ -1511,11 +1511,19 @@
     var proactiveEngine = window.TradeJournalAIProactiveEngine;
     var blocking = findings.filter(function (f) { return proactiveEngine && proactiveEngine.BLOCKING_SEVERITIES[f.severity]; });
     var rest = findings.filter(function (f) { return blocking.indexOf(f) === -1; });
-    var lines = blocking.map(function (f) { return f.message; }).concat(rest.map(function (f) { return f.message; }));
     var policy = window.TradeJournalCharacterPolicy;
     var hasCharacterPolicy = policy && typeof policy.hasCharacterPolicy === 'function'
       ? policy.hasCharacterPolicy(character)
       : (character === 'hunter' || character === 'commander');
+    var lines = blocking.map(function (f) { return f.message; });
+    // Market Engineer only: one extra DIFFERENCE line (fact -> constraint -> difference -> options),
+    // pure arithmetic over the blocking finding's own evidence numbers (see the policy module's
+    // proactiveDifferenceLine) - '' for every other character/finding, so their output is unchanged.
+    var differenceLine = blocking.length && hasCharacterPolicy && policy && typeof policy.proactiveDifferenceLine === 'function'
+      ? policy.proactiveDifferenceLine(blocking, i18n.language(), character)
+      : '';
+    if (differenceLine) lines.push(differenceLine);
+    lines = lines.concat(rest.map(function (f) { return f.message; }));
     if (blocking.length && hasCharacterPolicy) lines.unshift(characterProactiveOpener(i18n.language(), character));
     if (blocking.length) lines.push(hasCharacterPolicy ? characterOverrideQuestion(i18n.language(), character) : 'Do you want to keep the current value, or deliberately override it?');
     return lines.join(' ');

@@ -173,6 +173,14 @@
       voiceOpeningActiveTrade_commander: 'قربان، یه پوزیشن هنوز بازه. اول اون رو بررسی کنیم؟',
       voiceOpeningDueReflection_commander: 'قربان، یه Reflection عقب‌افتاده داریم. قبل از حرکت بعدی انجامش بدیم؟',
 
+      // Character Interaction Policy (Market Engineer gate): no signature address term at all -
+      // see docs/ai/characters/market-engineer.md's worked examples.
+      voiceOpeningFreshWelcome_engineer: 'خوش اومدی. بیا سیستم رو از پایه تنظیم کنیم.',
+      voiceOpeningReturningNeutral_engineer: 'خب، امروز چی رو می‌خوای بسازیم یا بررسی کنیم؟',
+      voiceOpeningActiveSession_engineer: 'اوکی، Session هنوز بازه. ببینیم کدوم متغیر بعدی مهمه؟',
+      voiceOpeningActiveTrade_engineer: 'یه Position هنوز بازه. اول وضعیتش رو چک کنیم؟',
+      voiceOpeningDueReflection_engineer: 'یه Reflection عقب‌افتاده داریم. قبل از Setup بعدی، دیتا رو کامل کنیم؟',
+
       convRouterSessionPurpose: 'سشن یعنی همون فضایی که قبل از ورود به معامله، توش چارت رو می‌بینی، حرکت بازار رو دنبال می‌کنی و سناریوهات رو با دلیل ثبت می‌کنی — به‌جای اینکه سرراست بری تو معامله.',
       convRouterPatternPurpose: 'پترن یعنی یک رفتار تکرارشونده‌ی بازار که یک بار با مراحلش ثبتش می‌کنی؛ بعد هر وقت همون رفتار رو توی یه سناریوی جدید دیدی، می‌تونی بهش لینکش کنی و ببینی چقدر واقعاً جواب داده.',
       convRouterStrategyPurpose: 'استراتژی یعنی همون قانون‌های شخصی خودت برای ورود، خروج و مدیریت ریسک — یک‌بار می‌نویسیش، بعد هر معامله رو بهش لینک می‌کنی تا ببینی چقدر واقعاً طبق پلن پیش رفتی.',
@@ -495,6 +503,13 @@
       voiceOpeningActiveTrade_commander: 'سيدي، لديك صفقة لا تزال مفتوحة. نراجعها أولاً؟',
       voiceOpeningDueReflection_commander: 'سيدي، لدينا مراجعة متأخرة. ننجزها قبل الخطوة التالية؟',
 
+      // Character Interaction Policy (Market Engineer gate): see docs/ai/characters/market-engineer.md.
+      voiceOpeningFreshWelcome_engineer: 'أهلاً بك. لنضبط النظام من الأساس.',
+      voiceOpeningReturningNeutral_engineer: 'حسناً، ماذا تريد أن نبني أو نفحص اليوم؟',
+      voiceOpeningActiveSession_engineer: 'حسناً، الجلسة ما زالت مفتوحة. ما المتغير التالي المهم؟',
+      voiceOpeningActiveTrade_engineer: 'صفقة ما زالت مفتوحة. نتحقق من حالتها أولاً؟',
+      voiceOpeningDueReflection_engineer: 'لدينا مراجعة متأخرة. نكمل البيانات قبل الإعداد التالي؟',
+
       convRouterSessionPurpose: 'الجلسة هي المكان الذي تراقب فيه الرسم البياني، وتتابع حركة السوق، وتسجّل سيناريوهاتك بمنطق واضح قبل الدخول في أي صفقة — بدلاً من الدخول مباشرة.',
       convRouterPatternPurpose: 'النمط هو سلوك متكرر في السوق تسجّله مرة واحدة بمراحله؛ وفي كل مرة ترى فيها نفس السلوك ضمن سيناريو جديد، يمكنك ربطه به ومعرفة مدى نجاحه فعلياً.',
       convRouterStrategyPurpose: 'الاستراتيجية هي قواعدك الخاصة للدخول والخروج وإدارة المخاطر — تكتبها مرة واحدة، ثم تربط كل صفقة بها لترى مدى التزامك الفعلي بالخطة.',
@@ -692,6 +707,13 @@
       voiceOpeningActiveSession_commander: 'Sir, the session\'s still open. Shall we continue from there?',
       voiceOpeningActiveTrade_commander: 'Sir, you have a position still open. Should we review it first?',
       voiceOpeningDueReflection_commander: 'Sir, we have a reflection still pending. Should we handle it before the next move?',
+
+      // Character Interaction Policy (Market Engineer gate): see docs/ai/characters/market-engineer.md.
+      voiceOpeningFreshWelcome_engineer: 'Welcome. Let\'s set the system up from the ground level.',
+      voiceOpeningReturningNeutral_engineer: 'So, what do you want to build or check today?',
+      voiceOpeningActiveSession_engineer: 'Okay, the session\'s still open. Which variable matters next?',
+      voiceOpeningActiveTrade_engineer: 'A position is still open. Check its status first?',
+      voiceOpeningDueReflection_engineer: 'We have a reflection pending. Complete the data before the next setup?',
 
       convRouterSessionPurpose: 'A Session is where you watch the chart, track market movement, and log your scenarios with real reasoning before you ever place a trade — instead of jumping straight into a position.',
       convRouterPatternPurpose: 'A Pattern is a repeatable market behavior you record once, with its own stages; whenever you see that same behavior in a new scenario, you can link it and see how well it\'s actually performed over time.',
@@ -1013,6 +1035,13 @@
       voiceOpeningActiveSession_commander: 'Señor, la sesión sigue abierta. ¿Continuamos desde ahí?',
       voiceOpeningActiveTrade_commander: 'Señor, tiene una posición aún abierta. ¿La revisamos primero?',
       voiceOpeningDueReflection_commander: 'Señor, tenemos una reflexión pendiente. ¿La resolvemos antes del siguiente paso?',
+
+      // Character Interaction Policy (Market Engineer gate): see docs/ai/characters/market-engineer.md.
+      voiceOpeningFreshWelcome_engineer: 'Bienvenido. Configuremos el sistema desde la base.',
+      voiceOpeningReturningNeutral_engineer: '¿Qué quieres construir o revisar hoy?',
+      voiceOpeningActiveSession_engineer: 'Vale, la sesión sigue abierta. ¿Qué variable importa ahora?',
+      voiceOpeningActiveTrade_engineer: 'Hay una posición abierta. ¿Revisamos su estado primero?',
+      voiceOpeningDueReflection_engineer: 'Tenemos una reflexión pendiente. ¿Completamos los datos antes del próximo setup?',
 
       convRouterSessionPurpose: 'Una Sesión es donde observas el gráfico, sigues el movimiento del mercado y registras tus escenarios con una razón real antes de entrar en una operación — en lugar de entrar directamente.',
       convRouterPatternPurpose: 'Un Patrón es un comportamiento repetible del mercado que registras una vez, con sus propias etapas; cada vez que veas ese mismo comportamiento en un escenario nuevo, puedes vincularlo y ver qué tan bien ha funcionado en realidad.',

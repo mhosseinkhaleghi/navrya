@@ -1,14 +1,14 @@
 (function () {
   'use strict';
-  // NAVRYA — Character Interaction Policy (Hunter gate, extended to Commander).
+  // NAVRYA — Character Interaction Policy (Hunter gate, extended to Commander and Market Engineer).
   //
   // NAVRYA's own deterministic engines (Workflow/Action/Risk/Safety/Proactive) decide WHAT
   // happens; a character only ever decides HOW it is communicated. This module is the one shared,
   // reusable place that answers "given this real event, how should the active character deliver
   // it" - it holds no business logic of its own (no field order, no risk math, no safety rule) and
-  // is never itself an AI call. Only Hunter and Commander have real content so far (each its own
-  // gate: "implementing ONLY the Hunter/Commander character"); `engineer`/`sage` resolve to
-  // `active: false` and every caller's own existing, unchanged behavior applies.
+  // is never itself an AI call. Only Hunter, Commander and Market Engineer (`engineer`) have real
+  // content so far (each its own gate); `sage` resolves to `active: false` and every caller's own
+  // existing, unchanged behavior applies.
   //
   // This is deliberately a small, fixed set of four reusable "delivery gears" (section 7 of the
   // interaction-policy brief), not a per-event bible - the same four gears cover every event below,
@@ -22,7 +22,7 @@
   //
   // Consumed today by: ai-companion-orchestrator.js (voice-opening greeting selection),
   // chat-dock-core.js (proactive risk-warning framing). The server-side LLM prompt fragment
-  // (server/pattern-ai-server.mjs's HUNTER_GEAR_INSTRUCTION) and the analysis-headline lead-in
+  // (server/pattern-ai-server.mjs's CHARACTER_GEAR_INSTRUCTION) and the analysis-headline lead-in
   // (navrya-src/chatDockView.jsx) implement the SAME gear/event model independently, kept in sync
   // by hand - matching this codebase's existing convention for the server's own
   // VOICE_CHARACTER_REPLY_STYLE (no shared file crosses the Node-server/browser-client boundary
@@ -46,7 +46,7 @@
   // Characters with real Character Interaction Policy content. The event->gear table below is
   // shared/character-agnostic (brief section 7: "reuse existing gears, do not add a second gear
   // enum") - only the actual phrase tables further down differ per character.
-  var IMPLEMENTED_CHARACTERS = { hunter: true, commander: true };
+  var IMPLEMENTED_CHARACTERS = { hunter: true, commander: true, engineer: true };
 
   // Default gear per event, absent any overriding sensitivity (see gearForEvent()). Events not
   // listed here (a future addition, or a caller's typo) fall back to NORMAL - the safest, most
@@ -101,44 +101,80 @@
   }
   function isHunterActive(character) { return (character || activeCharacter()) === 'hunter'; }
   function isCommanderActive(character) { return (character || activeCharacter()) === 'commander'; }
+  function isEngineerActive(character) { return (character || activeCharacter()) === 'engineer'; }
   function hasCharacterPolicy(character) { return !!IMPLEMENTED_CHARACTERS[character || activeCharacter()]; }
 
-  // NAVRYA/the proactive engine's own finding (severity/evidence/message) is never touched by
-  // either of these - only the address opening a blocking risk conflict starts with, and the
-  // closing override question, both reused verbatim by chat-dock-core.js's buildProactiveReply().
-  // `character` defaults to 'hunter' (this module's original, still-default character) when
-  // omitted, so every pre-existing caller that only ever passed `language` keeps its exact
-  // original behavior.
-  function proactiveOpener(language, character) {
-    if ((character || 'hunter') === 'commander') {
-      return pick(language, { en: 'Hold on, sir.', fa: 'قربان، یه تضاد داریم.', ar: 'سيدي، لدينا تعارض.', es: 'Señor, tenemos un conflicto.' });
-    }
-    return pick(language, { en: 'Hold on a sec.', fa: 'یه لحظه رفیق.', ar: 'لحظة واحدة.', es: 'Un momento.' });
-  }
-  function proactiveOverrideQuestion(language, character) {
-    if ((character || 'hunter') === 'commander') {
-      return pick(language, {
+  // Per-character phrase tables for the fully deterministic (non-model) replies. NAVRYA/the
+  // proactive engine's own finding (severity/evidence/message) is never touched by any of these:
+  // `proactiveOpener` is the address a blocking risk conflict starts with, `proactiveOverrideQuestion`
+  // the closing options question, `analysisHeadlineLeadIn` a short label prepended to the model's
+  // real, unchanged analysis headline (MAIN SIGNAL / OBSERVATION first). All are reused verbatim by
+  // chat-dock-core.js's buildProactiveReply() and chatDockView.jsx's onAnalysisReady(). A
+  // `character` that is omitted or has no table here resolves to Hunter's (this module's original,
+  // still-default character), so every pre-existing caller keeps its exact original behavior.
+  var PHRASES = {
+    hunter: {
+      proactiveOpener: { en: 'Hold on a sec.', fa: 'یه لحظه رفیق.', ar: 'لحظة واحدة.', es: 'Un momento.' },
+      proactiveOverrideQuestion: {
+        en: 'Want to stick with the plan, or knowingly push past it?',
+        fa: 'می‌خوای برگردیم روی پلن، یا همین استثنا رو آگاهانه تأیید می‌کنی؟',
+        ar: 'تريد نلتزم بالخطة، أم نتجاوزها بوعي؟',
+        es: '¿Nos quedamos con el plan, o lo superamos a propósito?'
+      },
+      analysisHeadlineLeadIn: { en: 'Main signal:', fa: 'ردپای اصلی اینه:', ar: 'الإشارة الرئيسية:', es: 'Señal principal:' }
+    },
+    commander: {
+      proactiveOpener: { en: 'Hold on, sir.', fa: 'قربان، یه تضاد داریم.', ar: 'سيدي، لدينا تعارض.', es: 'Señor, tenemos un conflicto.' },
+      proactiveOverrideQuestion: {
         en: 'Two options: fall back to the cap, or knowingly confirm this exception.',
         fa: 'دو انتخاب داریم: برگردیم روی سقف، یا این استثنا رو آگاهانه تأیید کنید.',
         ar: 'أمامنا خياران: الالتزام بالحد، أو تأكيد هذا الاستثناء عن وعي.',
         es: 'Tenemos dos opciones: volver al límite, o confirmar esta excepción a propósito.'
-      });
+      },
+      analysisHeadlineLeadIn: { en: 'Sir, quick briefing:', fa: 'قربان، گزارش کوتاه:', ar: 'سيدي، تقرير موجز:', es: 'Señor, informe breve:' }
+    },
+    // Market Engineer: no signature address term at all (no "رفیق"/"قربان") - the personality is
+    // how it frames a mismatch (fact -> constraint -> difference -> options), not who it names.
+    engineer: {
+      proactiveOpener: { en: 'We have a mismatch.', fa: 'یه mismatch داریم.', ar: 'عندنا عدم تطابق.', es: 'Hay un desajuste.' },
+      proactiveOverrideQuestion: {
+        en: 'Fix it, or knowingly confirm the exception?',
+        fa: 'اصلاح کنیم یا استثنا رو آگاهانه تأیید می‌کنی؟',
+        ar: 'نصحّحه، أم تؤكد هذا الاستثناء عن وعي؟',
+        es: '¿Lo corregimos, o confirmas la excepción a propósito?'
+      },
+      analysisHeadlineLeadIn: { en: 'Main observation:', fa: 'Observation اصلی:', ar: 'الملاحظة الرئيسية:', es: 'Observación principal:' }
     }
-    return pick(language, {
-      en: 'Want to stick with the plan, or knowingly push past it?',
-      fa: 'می‌خوای برگردیم روی پلن، یا همین استثنا رو آگاهانه تأیید می‌کنی؟',
-      ar: 'تريد نلتزم بالخطة، أم نتجاوزها بوعي؟',
-      es: '¿Nos quedamos con el plan, o lo superamos a propósito?'
-    });
+  };
+  function phrase(kind, language, character) {
+    return pick(language, (PHRASES[character || 'hunter'] || PHRASES.hunter)[kind]);
   }
-  // ANALYSIS_HEADLINE lead-in (section 20/19: MAIN SIGNAL first) - the headline text itself is
-  // always the model's real, already-generated analysis; this is only ever prepended, never
-  // blended into or replacing it.
-  function analysisHeadlineLeadIn(language, character) {
-    if ((character || 'hunter') === 'commander') {
-      return pick(language, { en: 'Sir, quick briefing:', fa: 'قربان، گزارش کوتاه:', ar: 'سيدي، تقرير موجز:', es: 'Señor, informe breve:' });
+  function proactiveOpener(language, character) { return phrase('proactiveOpener', language, character); }
+  function proactiveOverrideQuestion(language, character) { return phrase('proactiveOverrideQuestion', language, character); }
+  function analysisHeadlineLeadIn(language, character) { return phrase('analysisHeadlineLeadIn', language, character); }
+
+  // Market Engineer's DIFFERENCE step (fact -> constraint -> difference -> options). Pure
+  // arithmetic over numbers the Proactive Engine's own finding already carries in its evidence -
+  // never a new risk condition and never a new threshold: only the strategy-risk-limit finding has
+  // requested-vs-cap evidence, and only when both are finite numbers with requested above the cap.
+  // Any other finding, missing/non-numeric evidence, or any other character returns ''.
+  var DIFFERENCE_LINE = {
+    en: function (n) { return 'That is ' + n + ' point' + (n === 1 ? '' : 's') + ' above the limit.'; },
+    fa: function (n) { return 'یعنی ' + n + ' واحد درصد بالاتر از محدوده.'; },
+    ar: function (n) { return 'أي ' + n + ' نقطة مئوية فوق الحد.'; },
+    es: function (n) { return 'Es decir, ' + n + ' punto' + (n === 1 ? '' : 's') + ' porcentual' + (n === 1 ? '' : 'es') + ' por encima del límite.'; }
+  };
+  function proactiveDifferenceLine(findings, language, character) {
+    if (character !== 'engineer' || !Array.isArray(findings)) return '';
+    for (var i = 0; i < findings.length; i++) {
+      var f = findings[i];
+      var e = f && f.id === 'strategy-risk-limit' && f.evidence;
+      if (!e || typeof e.requestedRiskPercent !== 'number' || typeof e.strategyMaxRiskPercent !== 'number') continue;
+      if (!isFinite(e.requestedRiskPercent) || !isFinite(e.strategyMaxRiskPercent) || e.requestedRiskPercent <= e.strategyMaxRiskPercent) continue;
+      var diff = Math.round((e.requestedRiskPercent - e.strategyMaxRiskPercent) * 100) / 100;
+      return (DIFFERENCE_LINE[language] || DIFFERENCE_LINE.en)(diff);
     }
-    return pick(language, { en: 'Main signal:', fa: 'ردپای اصلی اینه:', ar: 'الإشارة الرئيسية:', es: 'Señal principal:' });
+    return '';
   }
 
   function resolve(ctx) {
@@ -163,9 +199,11 @@
     activeCharacter: activeCharacter,
     isHunterActive: isHunterActive,
     isCommanderActive: isCommanderActive,
+    isEngineerActive: isEngineerActive,
     hasCharacterPolicy: hasCharacterPolicy,
     proactiveOpener: proactiveOpener,
     proactiveOverrideQuestion: proactiveOverrideQuestion,
-    analysisHeadlineLeadIn: analysisHeadlineLeadIn
+    analysisHeadlineLeadIn: analysisHeadlineLeadIn,
+    proactiveDifferenceLine: proactiveDifferenceLine
   };
 })();

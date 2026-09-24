@@ -4,6 +4,10 @@ import test, { after, afterEach } from 'node:test';
 // Commander Character Interaction Policy: server-side gear resolution, extending
 // server/pattern-ai-server.mjs's existing CHARACTER_GEAR_INSTRUCTION/characterDeliveryGear -
 // mirrors tests/hunter-character-server-prompt.test.mjs's own conventions.
+// The AI server binds its port on import; every test process that imports it must use an ephemeral
+// port (the convention tests/ai-gateway-auth.test.mjs and 15 others follow) or parallel test files
+// collide on the default 8787 (EADDRINUSE crashes the later file).
+process.env.PATTERN_AI_PORT = '0';
 const serverModule = await import('../server/pattern-ai-server.mjs');
 const { dockChat } = serverModule;
 const server = serverModule.default;
@@ -94,8 +98,8 @@ test('Hunter is completely unaffected by the Commander gate - identical gear tex
   assert.match(systemText, /fast, observant field partner/i);
 });
 
-test('Engineer/Sage remain voice-only and unaffected by the Commander gate', async () => {
-  for (const character of ['engineer', 'sage']) {
+test('Sage remains voice-only and unaffected by the Commander gate', async () => {
+  for (const character of ['sage']) {
     const getBody = captureOpenAIRequest({ reply: 'ok' });
     await withEnv({ OPENAI_API_KEY: 'test-key' }, async () => {
       await dockChat({ provider: 'openai', message: 'hi', language: 'en', character });
@@ -105,11 +109,11 @@ test('Engineer/Sage remain voice-only and unaffected by the Commander gate', asy
   }
 });
 
-test('Engineer on a VOICE turn still gets its own original one-line style, unchanged by the Commander gate', async () => {
+test('Sage on a VOICE turn still gets its own original one-line style, unchanged by the Commander gate', async () => {
   const getBody = captureOpenAIRequest({ reply: 'ok', voiceReply: 'ok' });
   await withEnv({ OPENAI_API_KEY: 'test-key' }, async () => {
-    await dockChat({ provider: 'openai', message: 'hi', language: 'en', character: 'engineer', source: 'voice' });
+    await dockChat({ provider: 'openai', message: 'hi', language: 'en', character: 'sage', source: 'voice' });
   });
   const systemText = getBody().input[0].content[0].text;
-  assert.match(systemText, /You are speaking as the Market Engineer/);
+  assert.match(systemText, /You are speaking as the Market Master/);
 });

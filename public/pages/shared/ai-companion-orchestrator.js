@@ -163,10 +163,10 @@
   // turn" are transient UI state this module has no visibility into - the caller MUST check those
   // itself before ever calling this (same split as the Companion card's own render gate).
   // ==========================================================================================
-  // Character Interaction Policy (Hunter gate, extended to Commander): prefers a
-  // "<key>_<character>" i18n entry when an implemented character (hunter, commander) is active
+  // Character Interaction Policy (Hunter gate, extended to Commander and Market Engineer): prefers a
+  // "<key>_<character>" i18n entry when an implemented character (hunter, commander, engineer) is active
   // and one exists for the current language; falls back to the original, character-neutral key
-  // otherwise (which is exactly what engineer/sage still get, unchanged - see
+  // otherwise (which is exactly what sage still gets, unchanged - see
   // docs/ai/character-interaction-policy.md). NAVRYA still decides WHICH greeting kind fires
   // (voiceCtx above); this only ever swaps which copy is spoken for the SAME kind.
   function characterGreetingText(i18n, baseKey) {
@@ -176,7 +176,7 @@
       : (window.TradeJournalPanelLayer && window.TradeJournalPanelLayer.character) || 'hunter';
     var hasCharacterPolicy = policy && typeof policy.hasCharacterPolicy === 'function'
       ? policy.hasCharacterPolicy(character)
-      : (character === 'hunter' || character === 'commander');
+      : (character === 'hunter' || character === 'commander' || character === 'engineer');
     if (hasCharacterPolicy) {
       var characterKey = baseKey + '_' + character;
       var table = i18n.messages && i18n.messages[i18n.language()];

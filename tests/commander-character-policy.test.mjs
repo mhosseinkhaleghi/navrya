@@ -37,7 +37,7 @@ test('isCommanderActive()/isHunterActive() are independent and correct for every
     const policy = await policySandbox(character);
     assert.equal(policy.isCommanderActive(), character === 'commander', character);
     assert.equal(policy.isHunterActive(), character === 'hunter', character);
-    assert.equal(policy.hasCharacterPolicy(), character === 'hunter' || character === 'commander', character);
+    assert.equal(policy.hasCharacterPolicy(), character !== 'sage', character);
   }
 });
 
@@ -54,8 +54,8 @@ test('Hunter behavior is byte-for-byte unchanged: same gear mapping, same phrase
 
 // ---- item 20: Engineer/Sage remain unaffected (no policy at all) ----
 
-test('Engineer and Sage remain completely inactive - no gear, no phrase-table content, exactly as before this and the Hunter gate', async () => {
-  for (const character of ['engineer', 'sage']) {
+test('Sage remains completely inactive - no gear, no phrase-table content, exactly as before the Hunter/Commander/Engineer gates', async () => {
+  for (const character of ['sage']) {
     const policy = await policySandbox(character);
     const result = policy.resolve({ event: policy.EVENTS.RISK_WARNING });
     assert.equal(result.active, false, character);

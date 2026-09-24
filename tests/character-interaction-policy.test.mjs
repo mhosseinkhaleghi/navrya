@@ -39,8 +39,8 @@ test('activeCharacter() reads the real per-page character when set, for every ch
 
 // ---- resolve(): only Hunter is active in this gate ----
 
-test('resolve() is inactive (no gear, "none" allowances) for every character without a real Character Interaction Policy (engineer/sage)', async () => {
-  for (const character of ['engineer', 'sage']) {
+test('resolve() is inactive (no gear, "none" allowances) for a character without a real Character Interaction Policy (sage)', async () => {
+  for (const character of ['sage']) {
     const policy = await policySandbox(character);
     const result = policy.resolve({ event: policy.EVENTS.GENERAL_QA });
     assert.equal(result.active, false, character);
