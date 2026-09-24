@@ -312,7 +312,7 @@ function RoutineTodayPanel({ i18n, trades, onEdit }) {
         <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
           <SectionLabel>{i18n.t('psyRoutineTodayTitle')}</SectionLabel>
           <Caption>{i18n.t('psyRoutineNoneYet')}</Caption>
-          <Button variant="secondary" icon="plus" onClick={onEdit} style={{ alignSelf: 'flex-start' }}>{i18n.t('psyRoutineBuildOne')}</Button>
+          <Button variant="secondary" icon="plus" onClick={() => onEdit('new')} style={{ alignSelf: 'flex-start' }}>{i18n.t('psyRoutineBuildOne')}</Button>
         </div>
       </Panel>
     );
@@ -334,7 +334,7 @@ function RoutineTodayPanel({ i18n, trades, onEdit }) {
             <div style={{ width: 120, height: 8, borderRadius: 999, background: 'rgba(3,8,7,.65)', border: '1px solid var(--border-hairline)', overflow: 'hidden', flex: 'none' }}>
               <div style={{ height: '100%', width: progress.pct + '%', borderRadius: 999, background: 'linear-gradient(90deg,rgba(102,201,78,.45),var(--char-accent))' }}></div>
             </div>
-            <Button variant="secondary" size="sm" onClick={onEdit}>{i18n.t('psyRoutineEdit')}</Button>
+            <Button variant="secondary" size="sm" onClick={() => onEdit('edit')}>{i18n.t('psyRoutineEdit')}</Button>
           </div>
         </div>
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2,minmax(0,1fr))', gap: '8px 16px' }}>
@@ -437,7 +437,7 @@ function QuickAccessGrid({ i18n, onNavigate }) {
   );
 }
 
-function OverviewTab({ i18n, psych, mhStore, profile, trades, closed, checkins, setPsyTab, goFile, runCheckIn }) {
+function OverviewTab({ i18n, psych, mhStore, profile, trades, closed, checkins, setPsyTab, goFile, runCheckIn, onOpenRoutine }) {
   const now = new Date();
   const [calmOpen, setCalmOpen] = React.useState(false);
   const [, forceRerender] = React.useReducer((x) => x + 1, 0);
@@ -551,7 +551,7 @@ function OverviewTab({ i18n, psych, mhStore, profile, trades, closed, checkins, 
         <GaugeCard i18n={i18n} label={gauges[2].label} value={gauges[2].value} tone={gauges[2].tone} delta={gauges[2].delta} deltaGoodWhen={gauges[2].goodWhen} note={i18n.t('psyGaugeNote', { count: i18n.number(ratings.sampleSize) })} />
       </div>
 
-      <RoutineTodayPanel i18n={i18n} trades={trades} onEdit={() => setPsyTab('routine')} />
+      <RoutineTodayPanel i18n={i18n} trades={trades} onEdit={onOpenRoutine} />
 
       <Panel variant="base" ornament padding="18px 20px 20px">
         <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
@@ -1984,6 +1984,8 @@ function PsychologyShell({ i18n, tab, onTabChange }) {
   const tradeStore = window.TradeJournalTradeStore;
 
   const [psyTab, setPsyTabState] = React.useState(tab || 'overview');
+  // Set by the overview's routine buttons, consumed by the Routine tab the moment it mounts.
+  const [routineIntent, setRoutineIntent] = React.useState(null);
   const [fileTab, setFileTab] = React.useState(() => {
     const initial = pendingFileTab || 'intake';
     pendingFileTab = null;
@@ -2026,6 +2028,7 @@ function PsychologyShell({ i18n, tab, onTabChange }) {
   const routineDays = React.useMemo(() => buildRoutineDaysMap(), [psyTab]);
 
   function setPsyTab(next) { setPsyTabState(next); if (onTabChange) onTabChange(next); }
+  function openRoutine(intent) { setRoutineIntent(intent); setPsyTab('routine'); }
   function goFile(section) {
     setFileTab(section); setPsyTabState('file');
     // onTabChange (when present) remounts this whole shell - see pendingFileTab's comment above.
@@ -2111,10 +2114,10 @@ function PsychologyShell({ i18n, tab, onTabChange }) {
           {psyTab === 'overview' && (
             <OverviewTab
               i18n={i18n} psych={psych} mhStore={mhStore} profile={profile} trades={trades} closed={closed} checkins={checkins}
-              setPsyTab={setPsyTab} goFile={goFile} runCheckIn={runCheckIn}
+              setPsyTab={setPsyTab} goFile={goFile} runCheckIn={runCheckIn} onOpenRoutine={openRoutine}
             />
           )}
-          {psyTab === 'routine' && <RoutineTab i18n={i18n} />}
+          {psyTab === 'routine' && <RoutineTab i18n={i18n} intent={routineIntent} onIntentHandled={() => setRoutineIntent(null)} />}
           {psyTab === 'mood' && <MoodTab i18n={i18n} psych={psych} mhStore={mhStore} profile={profile} trades={trades} onLogged={forceRerender} />}
           {psyTab === 'therapist' && <TherapistTab i18n={i18n} mhStore={mhStore} profile={profile} onChanged={forceRerender} />}
           {psyTab === 'journeys' && <JourneysTab i18n={i18n} psych={psych} trades={trades} closed={closed} openJourney={openJourney} setOpenJourney={setOpenJourney} />}

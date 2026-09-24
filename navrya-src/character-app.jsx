@@ -40,6 +40,7 @@ import { openPostTradeReflection } from './postTradeReflectionModal.jsx';
 import { openPreSessionCheckIn } from './preSessionCheckInModal.jsx';
 import { tr as analysisCardTr, resolveUnresolvedItems } from './sessionAnalysisCard.jsx';
 import { useSidebarProfile, useWalletBalance, fmtWalletUsd } from './sidebarProfile.js';
+import { startRoutineReminders } from './routineReminders.js';
 
 function useStore(store) {
   return React.useSyncExternalStore(store.subscribe, store.getState);
@@ -3921,6 +3922,10 @@ export function mountCharacterApp(character) {
       const walletGateRoot = document.createElement('div');
       document.body.appendChild(walletGateRoot);
       createRoot(walletGateRoot).render(<WalletLowBalanceGate lang={String(document.documentElement.lang || 'en').toLowerCase()} />);
+
+      // Routine step reminders (routine-store.js dueReminders()). Started here for the same reason as
+      // the gates above: after the replica has hydrated, so the routine it reads is the account's real one.
+      startRoutineReminders();
     });
 
     // The global assistant (replaces the retired global-ai-dock.js floating launcher) - always

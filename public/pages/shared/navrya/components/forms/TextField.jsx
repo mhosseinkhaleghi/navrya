@@ -20,7 +20,7 @@ export function TextField({
           height: 44, boxSizing: 'border-box', padding: '0 14px', borderRadius: 8, width: '100%',
           background: 'rgba(3,8,7,.55)', color: 'var(--text-primary)', font: 'var(--type-body)',
           border: '1px solid ' + (focus ? 'var(--char-accent)' : 'var(--border-gold)'),
-          outline: 'none', opacity: disabled ? .38 : 1,
+          outline: 'none', opacity: disabled ? .38 : 1, colorScheme: type === 'time' || type === 'date' ? 'dark' : undefined,
           transition: 'border-color var(--dur-hover) var(--ease-out)'
         }}
       />
