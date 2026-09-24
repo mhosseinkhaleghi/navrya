@@ -1664,12 +1664,20 @@ Each feature i18n module exposes a `window` API with `t()`, current language, di
   - **AI suggest/ingest client:** `public/pages/shared/analysis-profile-ai.js` →
     `window.TradeJournalAnalysisProfileAI` - `suggestFocuses`/`suggestConcepts` (POST
     `/api/analysis-profiles/suggest`, kind-dispatched) and `ingestLearning` (POST
-    `/api/analysis-profiles/ingest`). Bring-your-own-key: when the trader has a personal provider
-    key configured (`TradeJournalAISettingsStore`), every request also carries
-    `provider`/`model`/`apiKey`, so the gateway treats the call as BYOK and never bills the wallet;
-    with no personal key nothing extra is sent and the platform default provider serves the call,
-    billed per the standard token policy (`AI_BILLED_ROUTES`: `analysisProfileSuggest`,
-    `analysisProfileIngest`). Deliberately does **not** fall back to a canned local reply on
+    `/api/analysis-profiles/ingest`). Every request carries the trader's selected `provider` and `model`
+    (`TradeJournalAISettingsStore`), exactly like the AI dock and Session analysis; the personal
+    `apiKey` is added ONLY when one is configured, and that alone makes the gateway treat the call
+    as BYOK and never bill the wallet. Without a key the call is wallet-billed per the standard token
+    policy (`AI_BILLED_ROUTES`: `analysisProfileSuggest`, `analysisProfileIngest`). **This used to
+    send nothing at all without a key** on the assumption the gateway would fall back to a platform
+    default; its wallet gate priced that as `undefined` provider and model, which can never match a
+    price row, so every wallet-funded teach/suggest/chat/preview failed with
+    `PROVIDER_PRICING_NOT_CONFIGURED` (HTTP 503) whatever an admin had priced - found via a real
+    website source that could not be taught. Fixed at both ends: the client above, and the gateway
+    (`reserveTargetFor()` in `server/pattern-ai-server.mjs`), which now prices a hold against the
+    provider and model `callProvider()` will actually resolve for that request body - both use the one
+    `effectiveModelFor()`, so the hold and the call can never disagree - which protects every other
+    client that omits them too. An unpriced model still fails closed; nothing became free. Deliberately does **not** fall back to a canned local reply on
     failure the way `pattern-registry-ai.js`/`strategy-education-ai.js` do for their own
     features - a billed AI feature silently "succeeding" with fake text would hide a real
     `WALLET_INSUFFICIENT_BALANCE`/`PROVIDER_PRICING_NOT_CONFIGURED` condition from the trader; a
@@ -1707,7 +1715,17 @@ Each feature i18n module exposes a `window` API with `t()`, current language, di
     (`2002::/16`) and IPv4-compatible forms all wrap an IPv4 address - each is unwrapped and re-checked
     against the IPv4 rules, and anything unparseable fails closed. The pinned `lookup` also answers
     Node's `all:true` (autoSelectFamily) call shape - the single-address form fails to connect. A
-    website yields a title and a plain-text digest capped at 6000 characters (never the full page);
+    website yields a title and a plain-text digest capped at 6000 characters (never the full page), and
+    the digest is the ARTICLE, not the site furniture: it starts at the page's first `<h1>` (only when
+    that sits in the first 60% of the document), drops `<head>`, `aside`, `menu`, `iframe`, `select`
+    and `button` alongside the existing `nav`/`header`/`footer`/`form`, and removes runs of four or more
+    consecutive link-only lines as navigation. The last rule exists because semantic elements alone do
+    not cover real pages: one a trader taught the engine from is plain `<div>`/`<ul>` with no `<nav>`
+    at all, so its menu, twice (mobile and desktop), filled the first ~1500 of 6000 characters and 78 of
+    the first 123 lines. Three or fewer link-only lines are kept (a "see also" is content), a line mixing
+    link text with real words is prose however many links it has, and a list of non-link items is never
+    touched; `htmlToText()` is exported and unit-tested for each of those. A source read before this
+    change keeps its stored digest until the trader presses "read again";
     YouTube yields the oEmbed title plus, best-effort, the caption track the watch page itself offers,
     degrading to `transcriptAvailable:false` so the UI offers paste-a-transcript rather than failing.
     Nothing here calls an LLM or persists anything. Exposed as `POST /api/analysis-profiles/read-source`
