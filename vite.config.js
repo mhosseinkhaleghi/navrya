@@ -12,6 +12,7 @@ export default defineConfig({
       '/api/mental-health': 'http://127.0.0.1:8787',
       '/api/ai': 'http://127.0.0.1:8787',
       '/api/sessions': 'http://127.0.0.1:8787',
+      '/api/analysis-profiles': 'http://127.0.0.1:8787',
       '/api/auth': 'http://127.0.0.1:8788',
       '/api/community': 'http://127.0.0.1:8788',
       '/api/sync': 'http://127.0.0.1:8788',
