@@ -1957,6 +1957,44 @@ Each feature i18n module exposes a `window` API with `t()`, current language, di
   styles/focus count/linked strategies) underneath the new charts; the old placeholder
   "insufficient data" usage/markets/timeframes rows and the `sessionUsageUnavailable` copy key are
   gone now that the real thing exists.
+- **Completion pass (2026-09) - link, connectivity, lens, memory sync, engine report, source cards:**
+  - **Strategy link:** `StrategyDetailsTab.setLinkedProfile()` saves ONCE and hands the record the store returned to
+    `onSave` (it used to pass the PRE-change snapshot, and the hub's single Details save funnel re-saved that, so the old
+    link - or the old value instead of the cleared `null` - won); `null` stays the "no link" value.
+    `tests/strategy-analysis-profile-link-ui.test.mjs` runs the real handler and the hub's real `onSave()` against the
+    real store.
+  - **AI connectivity:** the five routes (suggest, ingest, chat, preview, read-source) resolve
+    `TradeJournalPatternAIConfig.baseUrl` at REQUEST time (`apiBase()` in `analysis-profile-ai.js`), so a base URL that
+    is set after the script loaded is honoured. `navrya-src/analysisProfileAiErrors.js` maps every failure to one kind
+    (auth, network/proxy, timeout, wallet, quota, provider config, PDF provider, generic) and
+    `analysisProfileAiStatus.jsx` draws the non-secret `AiReadinessBar` (provider / model, BYOK vs platform-managed - the
+    key itself is never returned, logged or rendered) and `AiErrorNotice` (specific translated message + Retry) in
+    Preview, Chat, Suggestions and the teaching panel.
+  - **Lens / focus sync:** `navrya-src/analysisProfileLens.js` is the one place a primary/secondary change is
+    reconciled: the primary is removed from the secondary list at once, the registry's `mergeFocusRecommendations`
+    is recomputed, stale registry focuses are dropped (or surfaced) before save, custom focuses are kept. Onboarding,
+    the Rite, Setup and the DNA preview (`analysisProfileDna.jsx`) all go through it. Profile cards stretch to the
+    row height with the footer pinned (`Panel`'s additive `fill` prop).
+  - **Memory Sync (a projection, never a second memory):** `analysisProfileMemoryProjection.js` derives the graph and a
+    status from `getAnalysisContext(profile.id)` (so only ENABLED concepts appear - what the Session prompt reads),
+    the learning ledger and the knowledge-source list. The sync identity is the context's profile revision;
+    `tradejournal:analysis-profiles-changed` marks a projection stale. "Sync memory"
+    (`analysisProfileMemorySync.jsx`) only READS - no AI call, no tokens, no write. An uploaded PDF or link that has not
+    been taught, a raw note and an AI proposal nobody accepted are listed as "awaiting teaching / review", never as
+    graph nodes and never counted; they become memory only through `applyLearning()`, after which the next sync
+    includes them. The graph has a textual equivalent for assistive tech.
+  - **Report - engine usage and maturity:** `compute()` also returns `engines` - runs per provider + model, run types,
+    and scenarios attributed by the EXACT `aiSource.analysisId` of the run that proposed them (a scenario whose run is
+    not in the recorded rows is `unmatchedScenarios`, never spread over engines). An engine's accuracy exists only
+    once its own scenarios are resolved; there is no "success" field - a run is usage, not quality.
+    `analysisProfileMaturity.js` describes what a profile has been taught (enabled concepts by priority/origin,
+    understanding version, taught sources and lessons - classified by the Memory Sync's own summaries) as counts plus
+    a milestone checklist; it has no score, and unreadable data is "not recorded", not a missed milestone.
+  - **Knowledge cards:** each source is a `SourceCard` (kind-specific icon/colour, status badge, host or file, digest,
+    Add -> Read/Stored -> Taught progress, actions pinned bottom). `analysisProfileKnowledgeCards.js` holds the pure
+    rules (state, steps, host, size, `safeHttpUrl`). Text is only ever rendered as text, only http(s) links are
+    clickable, the host is printed without fetching anything from it (no favicon / preview), and a PDF is downloaded
+    only on an explicit Teach.
 - **Explicit future-AI boundary, stated here at full strength per the brief's own instruction:**
   **AI analysis freedom/strictness is intentionally NOT part of Analysis Profile. It is selected
   per AI analysis generation request**, at the moment a user presses "Generate AI Analysis" inside
