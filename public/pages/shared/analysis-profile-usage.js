@@ -38,6 +38,7 @@
   var WEEKDAYS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']; // Monday-first, matching a trading week
   var SMALL_SAMPLE = 10;
   var TREND_WEEKS = 12;
+  var RECENT_DAYS = 30;
   var R_BUCKETS = [-2, -1.5, -1, -0.5, 0, 0.5, 1, 1.5, 2, 2.5, 3, 3.5, 4];
 
   // Strict on purpose: `new Date(null).getTime()` is 0 (and `new Date(true)` is 1), so a missing timestamp would silently become
@@ -194,6 +195,17 @@
     return { sessions: SESSIONS.slice(), weekdays: WEEKDAYS.slice(), table: table, placed: placed, unplaced: unplaced, max: max };
   }
 
+  // Runs in the last RECENT_DAYS calendar days. Whole calendar days in `timeZone` (like the weekly buckets) - never `ms / 86400000`, which a
+  // DST switch or a trader west of UTC would put on the wrong side of the boundary. A run stamped in the future is not "recent".
+  function recentRuns(analyses, nowMs, timeZone) {
+    var today = dayNumber(nowMs, timeZone); var count = 0;
+    analyses.forEach(function (row) {
+      var ago = today - dayNumber(toMs(row.occurredAt), timeZone);
+      if (ago >= 0 && ago < RECENT_DAYS) count += 1;
+    });
+    return count;
+  }
+
   // ---- engines (provider + model) ---------------------------------------------------------------------------------------
 
   function text(v) { return v == null ? '' : String(v).trim(); }
@@ -310,7 +322,8 @@
       empty: analyses.length === 0,
       timeZone: zone,
       trackingSince: analyses.length ? new Date(toMs(analyses[0].occurredAt)).toISOString() : null,
-      analyses: { total: analyses.length, byType: byType },
+      // recent = how many runs fall in the last recentDays (30) calendar days, today included, in the trader's zone; lastRunAt = the newest run.
+      analyses: { total: analyses.length, byType: byType, recent: recentRuns(analyses, nowMs, zone), recentDays: RECENT_DAYS, lastRunAt: analyses.length ? new Date(toMs(analyses[analyses.length - 1].occurredAt)).toISOString() : null },
       scenarios: {
         added: attributed.length, confirmed: confirmed, invalidated: invalidated, open: attributed.length - resolved, resolved: resolved,
         accuracy: pct(confirmed, resolved), smallSample: resolved > 0 && resolved < SMALL_SAMPLE, smallSampleThreshold: SMALL_SAMPLE
@@ -334,6 +347,6 @@
     compute: compute,
     // exposed for tests and for other reports that need the same calendar-day arithmetic
     helpers: { engineKey: engineKey, dayNumber: dayNumber, weekdayIndex: weekdayIndex, weeksAgo: weeksAgo, scenarioOutcome: scenarioOutcome, resolvedAtMs: resolvedAtMs, safeZone: safeZone },
-    SESSIONS: SESSIONS, WEEKDAYS: WEEKDAYS, SMALL_SAMPLE: SMALL_SAMPLE, TREND_WEEKS: TREND_WEEKS
+    SESSIONS: SESSIONS, WEEKDAYS: WEEKDAYS, SMALL_SAMPLE: SMALL_SAMPLE, TREND_WEEKS: TREND_WEEKS, RECENT_DAYS: RECENT_DAYS
   };
 }());

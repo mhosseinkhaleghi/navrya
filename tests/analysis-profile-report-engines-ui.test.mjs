@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 import { readFile } from 'node:fs/promises';
 import path from 'node:path';
 import test from 'node:test';
@@ -51,6 +52,7 @@ function twoEngines() {
 }
 const maturityOf = (report, over) => j(buildMaturity({ profile, sources: [{ id: 's1', kind: 'pdf', status: 'taught' }, { id: 's2', kind: 'website', status: 'queued' }], events: [{ id: 'e1', kind: 'taught_source', createdAt: '2026-03-04T00:00:00.000Z', tokenUsage: { promptTokens: 5, completionTokens: 5 } }], report, ...over }));
 const view = (report, lang, extra) => { globalThis.window = { matchMedia: () => ({ matches: false }), ...(extra || {}) }; return jsx.render(jsx.modules.report.ProfileReportView, { report, profile, lang, ...(extra && extra.props) }); };
+const await_styles = () => readFileSync(path.join(root, 'public', 'pages', 'shared', 'navrya', 'styles.css'), 'utf8');
 const cards = (html) => html.match(/data-engine-card="true"/g) || [];
 
 // ---- Engine usage ----------------------------------------------------------------------------------------------------------
@@ -78,7 +80,8 @@ test('accuracy is shown only for the engine whose scenarios are resolved; an eng
   assert.match(claude, /data-engine-accuracy="none"/);
   assert.ok(visibleText(claude).includes(trainingCopy.en.rptEngineNoResolved));
   assert.equal(/data-engine-accuracy="0"/.test(html), false);
-  assert.doesNotMatch(visibleText(html), /success/i, 'an engine is never called successful');
+  const enginesPanel = html.slice(html.indexOf('data-report-panel="engines"'), html.indexOf('data-report-panel="funnel"'));
+  assert.doesNotMatch(visibleText(enginesPanel), /success/i, 'an engine is never called successful (the profile-level "success rate" KPI is a different, resolved-scenario figure)');
 });
 
 test('every engine card counts run types and scenarios from the recorded rows, with digits in the reader\'s script', () => {
@@ -184,14 +187,44 @@ test('where the concepts came from is drawn only for origins that exist; without
 
 // ---- structure: equal-height, responsive, RTL-safe ------------------------------------------------------------------------------
 
-test('paired panels stretch to one height and the trend row wraps instead of squeezing on a narrow screen', () => {
+test('the report lays itself out against its own column: container classes for the tiles, trend and pairs - no fixed two-column grid, no viewport guessing', () => {
   const report = twoEngines();
   const html = view(report, 'en', { props: { maturity: maturityOf(report) } });
+  assert.match(html, /class="nv-rp" data-profile-report="true" data-report-empty="false"/);
+  assert.match(html, /class="nv-rp-kpis" data-report-panel="kpis"/);
+  assert.match(html, /class="nv-rp-trend"/);
+  assert.equal((html.match(/class="nv-rp-pair"/g) || []).length, 2, 'concepts + learning, heat + markets');
   assert.doesNotMatch(html, /grid-template-columns:minmax\(0,2\.1fr\) minmax\(0,1fr\)/, 'the fixed two-column trend grid is gone');
-  assert.match(html, /flex-wrap:wrap[^"]*"[^>]*><div[^>]*data-report-panel="trend"|data-report-panel="trend"[^>]*flex:2\.1 1 380px/);
-  assert.equal((html.match(/align-items:stretch/g) || []).length >= 3, true, 'paired grids and the engine list stretch their cells');
-  assert.equal(/align-items:start/.test(html.slice(html.indexOf('data-report-panel="heat"') - 400, html.indexOf('data-report-panel="markets"') + 400)), false, 'heat / markets no longer top-align at different heights');
-  for (const panel of ['engines', 'trend', 'outcome', 'concepts', 'maturity', 'heat', 'markets', 'rdist']) assert.match(html, new RegExp(`data-report-panel="${panel}"`), panel);
+  for (const panel of ['kpis', 'engines', 'funnel', 'trend', 'outcome', 'concepts', 'maturity', 'heat', 'markets', 'rdist']) assert.match(html, new RegExp(`data-report-panel="${panel}"`), panel);
+});
+
+test('there are exactly six KPI tiles, so a row is always full (2 x 3, 3 x 2, 6 x 1) and the usage, scenario and success figures are among them', () => {
+  const report = twoEngines();
+  for (const lang of LANGS) {
+    const html = view(report, lang);
+    const kpis = html.slice(html.indexOf('class="nv-rp-kpis"'), html.indexOf('data-report-footnote'));
+    assert.equal((kpis.match(/navrya-tabular/g) || []).length, 6, `${lang}: six tiles`);
+    const text = visibleText(kpis);
+    for (const key of ['rptKpiAnalyses', 'rptKpiScenarios', 'rptKpiAccuracy', 'rptKpiAdherence', 'rptKpiWinRate', 'rptKpiAvgR']) assert.ok(text.includes(trainingCopy[lang][key]), `${lang}.${key}`);
+    assert.ok(text.includes(trt(lang, 'rptNoteLast30', { n: d(lang, 4) })), `${lang}: usage in the last 30 days`);
+    assert.ok(visibleText(html).includes(trainingCopy[lang].rptKpiFootnote), `${lang}: says what the scenario and success figures mean`);
+  }
+  const css = readFileSync(path.join(root, 'public', 'pages', 'shared', 'navrya', 'profile-report.css'), 'utf8');
+  assert.match(css, /\.nv-rp \{\s*container: nv-rp \/ inline-size;/);
+  assert.match(css, /@container nv-rp \(min-width: 620px\) \{\s*\.nv-rp-kpis \{ grid-template-columns: repeat\(3,/);
+  assert.match(css, /@container nv-rp \(min-width: 1040px\) \{\s*\.nv-rp-kpis \{ grid-template-columns: repeat\(6,/);
+  assert.match(css, /@container nv-rp \(min-width: 860px\) \{\s*\.nv-rp-trend \{ grid-template-columns: minmax\(0, 2\.1fr\) minmax\(0, 1fr\); \}\s*\.nv-rp-pair \{ grid-template-columns: repeat\(2,/);
+  assert.doesNotMatch(css, /(?:margin|padding|border)-(?:left|right)|(?:^|[;{\s])(?:left|right):|text-align:\s*(?:left|right)/, 'logical properties only');
+  assert.ok((await_styles()).includes('@import url("profile-report.css");'));
+});
+
+test('the usage KPI reports the last 30 days and the header names the last use; the success rate is confirmed out of resolved, "-" when nothing is resolved', () => {
+  const html = view(twoEngines(), 'en');
+  assert.ok(visibleText(html).includes('4 in the last 30 days'));
+  assert.ok(visibleText(html).includes('Last used'));
+  const empty = compute({ analyses: [run('a1', 'openai', 'gpt-x')] });
+  const kpis = visibleText(view(empty, 'en').slice(view(empty, 'en').indexOf('class="nv-rp-kpis"')));
+  assert.match(kpis, /Scenario success rate —/);
 });
 
 test('an engine card pins its scenarios footer to the bottom of an equal-height row', () => {
@@ -240,4 +273,86 @@ test('every report copy key the new panels look up exists in all four languages'
   for (const copy of ['rptMsConcepts', 'rptMsMandatory', 'rptMsUnderstanding', 'rptMsSource', 'rptMsLesson', 'rptMsAnalysis', 'rptMsCoverage', 'rptMsResolved']) keys.add(copy);
   assert.ok(keys.size > 60);
   for (const lang of LANGS) for (const key of keys) assert.ok(trainingCopy[lang][key], `${lang}.${key}`);
+});
+
+// ---- the report before any analysis was recorded (what a trader sees first) -----------------------------------------------------------
+
+test('with nothing recorded the report is still drawn IN FULL - every panel keeps its place, like the Patterns report - with a notice on top, never a single empty box', () => {
+  const report = compute({});
+  assert.equal(report.empty, true);
+  const maturity = maturityOf(report, { sources: [], events: [] });
+  for (const lang of LANGS) {
+    const html = view(report, lang, { props: { maturity } });
+    const text = visibleText(html);
+    assert.match(html, /data-report-empty="true"/);
+    assert.match(html, /data-report-notice="empty"/);
+    assert.ok(text.includes(trainingCopy[lang].rptEmptyTitle) && text.includes(trainingCopy[lang].rptEmptyBody), lang);
+    for (const panel of ['kpis', 'engines', 'funnel', 'trend', 'outcome', 'concepts', 'maturity', 'heat', 'markets', 'rdist']) assert.match(html, new RegExp(`data-report-panel="${panel}"`), `${lang}: ${panel}`);
+    const kpis = html.slice(html.indexOf('class="nv-rp-kpis"'), html.indexOf('data-report-footnote'));
+    assert.equal((kpis.match(/navrya-tabular/g) || []).length, 6, `${lang}: the six KPI tiles are there`);
+  }
+});
+
+test('an empty report shows true zeros for counts and dashes for rates - and never NaN, Infinity or undefined anywhere', () => {
+  const report = compute({});
+  for (const lang of LANGS) {
+    const html = view(report, lang, { props: { maturity: maturityOf(report, { sources: [], events: [] }) } });
+    assert.doesNotMatch(visibleText(html), /NaN|Infinity|undefined|\[object/, lang);
+    assert.doesNotMatch(html, /NaN|Infinity|undefined/, `${lang}: nor in an attribute`);
+    const kpis = visibleText(html.slice(html.indexOf('class="nv-rp-kpis"'), html.indexOf('data-report-footnote')));
+    assert.ok(kpis.includes(d(lang, 0)), 'a count of nothing is 0');
+    assert.ok(kpis.includes('—'), 'a rate with nothing behind it is a dash');
+    assert.equal(/0\s*[%٪]/.test(kpis.replace(/۰/g, '0')), false, 'no invented 0% rate');
+  }
+});
+
+test('the funnel never divides by a zero stage: the drop under a stage that follows an empty one is a dash', () => {
+  const html = view(compute({}), 'en');
+  const funnel = visibleText(html.slice(html.indexOf('data-report-panel="funnel"'), html.indexOf('data-report-panel="trend"')));
+  assert.doesNotMatch(funnel, /NaN/);
+  assert.ok(funnel.includes('—'));
+  const partial = compute({ analyses: [run('a1', 'openai', 'gpt-x')], sessions: [session([scenario('s-a', 'a1')])] });
+  const drop = visibleText(view(partial, 'en').slice(view(partial, 'en').indexOf('data-report-panel="funnel"'), view(partial, 'en').indexOf('data-report-panel="trend"')));
+  assert.ok(drop.includes(trt('en', 'rptFunnelDrop', { n: '100' })), 'one open scenario, none resolved = a 100% drop, computed');
+});
+
+test('an empty chart is a dashed placeholder that says why - not a flat line that would read as a measured 0% - and the heat map grid is still drawn', () => {
+  const report = compute({});
+  for (const lang of LANGS) {
+    const html = view(report, lang);
+    assert.match(html, /data-report-empty-chart="trend"/);
+    assert.match(html, /data-report-empty-chart="engines"/);
+    const trend = html.slice(html.indexOf('data-report-panel="trend"'), html.indexOf('data-report-panel="outcome"'));
+    assert.equal(/<svg|<path/.test(trend), false, `${lang}: no fake line in the trend panel`);
+    assert.ok(visibleText(html).includes(trainingCopy[lang].rptEngineEmpty), lang);
+    const heat = html.slice(html.indexOf('data-report-panel="heat"'), html.indexOf('data-report-panel="markets"'));
+    assert.equal((heat.match(/border:1px solid rgba\(244,234,215,\.06\)/g) || []).length, 28, `${lang}: 4 sessions x 7 weekdays`);
+    assert.ok(visibleText(heat).includes(trainingCopy[lang].rptNone));
+  }
+});
+
+test('the learning panel is part of the empty report too (a profile can be taught before it has ever been used), with its own empty state', () => {
+  const report = compute({});
+  const bare = { id: 'p1', concepts: [], understanding: { summary: '', version: 0 } };
+  const maturity = j(buildMaturity({ profile: bare, sources: [], events: [], report }));
+  globalThis.window = { matchMedia: () => ({ matches: false }) };
+  const html = jsx.render(jsx.modules.report.ProfileReportView, { report, profile: bare, lang: 'en', maturity });
+  assert.match(html, /data-report-panel="maturity"/);
+  assert.ok(visibleText(html).includes(trainingCopy.en.rptMatEmpty));
+});
+
+test('training tokens live in the learning panel (the KPI row is exactly six tiles), from the same ledger the Memory tab reads, and are "not recorded" when the ledger could not be read', () => {
+  const report = twoEngines();
+  const html = view(report, 'en', { props: { maturity: maturityOf(report) } });
+  const tokens = visibleText(html.slice(html.indexOf('data-maturity-stat="tokens"'), html.indexOf('data-maturity-stat="tokens"') + 500));
+  assert.ok(tokens.includes(trainingCopy.en.rptKpiTokens) && tokens.includes('10') && tokens.includes(trt('en', 'rptNoteAiEvents', { n: '1' })), tokens);
+  const unread = view(report, 'en', { props: { maturity: maturityOf(report, { events: null }) } });
+  const stat = visibleText(unread.slice(unread.indexOf('data-maturity-stat="tokens"'), unread.indexOf('data-maturity-stat="tokens"') + 400));
+  assert.ok(stat.includes(trainingCopy.en.rptNotRecorded), stat);
+});
+
+test('the Patterns report funnel has the same guard: a stage that follows an empty one shows a dash, not "NaN%" (seen on production)', async () => {
+  const hub = await read('strategiesHubView.jsx');
+  assert.match(hub, /funnelStages\[i - 1\]\.v \? tr\(lang, 'funnelDrop'/);
+  assert.doesNotMatch(hub, /tr\(lang, 'funnelDrop', \{ n: digits\(lang, Math\.max\(0, Math\.round\(\(1 - f\.v \/ funnelStages\[i - 1\]\.v\) \* 100\)\)\) \}\)\}\s*<\/span>/);
 });

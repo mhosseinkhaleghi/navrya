@@ -124,19 +124,21 @@ function BarRow({ label, valueText, pct, hint, tone }) {
   );
 }
 
+// Six headline numbers, always drawn - with nothing recorded yet they read 0 (a true count) or "-" (a rate with nothing behind it),
+// exactly like the Patterns report. Six tiles fill a row completely at every width (2 x 3, 3 x 2, 6 x 1 - see profile-report.css).
 function KpiRow({ report, lang }) {
-  const { scenarios, adherence, trades, tokens } = report;
+  const { scenarios, adherence, trades, analyses } = report;
   return (
     <React.Fragment>
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(178px,1fr))', gap: 12 }}>
-        <KpiTile icon="ScanSearch" label={trt(lang, 'rptKpiAnalyses')} value={digits(lang, report.analyses.total)} />
+      <div className="nv-rp-kpis" data-report-panel="kpis">
+        <KpiTile icon="ScanSearch" label={trt(lang, 'rptKpiAnalyses')} value={digits(lang, analyses.total)} note={analyses.total ? trt(lang, 'rptNoteLast30', { n: digits(lang, analyses.recent) }) : undefined} />
         <KpiTile icon="scenarios" label={trt(lang, 'rptKpiScenarios')} value={digits(lang, scenarios.added)} note={scenarios.open ? trt(lang, 'rptNoteOpen', { n: digits(lang, scenarios.open) }) : undefined} />
         <KpiTile icon="CircleCheck" label={trt(lang, 'rptKpiAccuracy')} value={pctText(lang, scenarios.accuracy)} note={scenarios.resolved ? trt(lang, 'rptNoteResolved', { n: digits(lang, scenarios.resolved) }) : undefined} />
         <KpiTile icon="ListChecks" label={trt(lang, 'rptKpiAdherence')} value={pctText(lang, adherence.appliedRate)} note={adherence.checkedRate != null ? trt(lang, 'rptNoteChecked', { n: digits(lang, adherence.checkedRate) }) : undefined} />
         <KpiTile icon="Trophy" label={trt(lang, 'rptKpiWinRate')} value={pctText(lang, trades.winRate)} note={trades.closed ? trt(lang, 'rptNoteClosed', { n: digits(lang, trades.closed) }) : undefined} />
         <KpiTile icon="Scale" label={trt(lang, 'rptKpiAvgR')} value={trades.avgR == null ? '—' : digits(lang, trades.avgR)} />
-        <KpiTile icon="sparkle" label={trt(lang, 'rptKpiTokens')} value={digits(lang, tokens.total.toLocaleString('en-US'))} note={tokens.aiEvents ? trt(lang, 'rptNoteAiEvents', { n: digits(lang, tokens.aiEvents) }) : undefined} />
       </div>
+      <span data-report-footnote="true" style={{ fontSize: 11, lineHeight: 1.8, color: 'var(--text-dim)' }}>{trt(lang, 'rptKpiFootnote')}</span>
       {scenarios.smallSample && <span style={{ fontSize: 11.5, color: 'var(--warning)' }}>{trt(lang, 'rptSmallSampleNote', { n: digits(lang, scenarios.smallSampleThreshold) })}</span>}
     </React.Fragment>
   );
@@ -149,37 +151,35 @@ function FunnelPanel({ report, lang, chartKey }) {
   const rtl = lang === 'fa' || lang === 'ar';
   const stages = report.funnel.filter((f) => STAGE_KEYS[f.key]).map((f) => ({ label: trt(lang, STAGE_KEYS[f.key]), v: f.v }));
   return (
-    <Panel variant="base" ornament padding="18px 20px 20px">
+    <Panel variant="base" ornament padding="18px 20px 20px" data-report-panel="funnel">
       <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
-        <PanelTitle>{trt(lang, 'rptFunnelTitle')}</PanelTitle>
-        {stages[0].v > 0 ? (
-          <React.Fragment>
-            <div style={{ width: '100%', transform: rtl ? 'none' : 'scaleX(-1)' }}>{funnelSvg(stages, chartKey)}</div>
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(' + stages.length + ',1fr)', gap: 12 }}>
-              {stages.map((stage, i) => (
-                <div key={stage.label} style={{ display: 'flex', flexDirection: 'column', gap: 6, alignItems: 'center', textAlign: 'center', paddingTop: 12, borderTop: '1px solid var(--border-hairline)' }}>
-                  <span style={{ fontSize: 11.5, color: 'var(--text-muted)' }}>{stage.label}</span>
-                  <span className="navrya-tabular" style={{ fontSize: 22, fontWeight: 700, color: 'var(--parchment)' }}>{digits(lang, stage.v)}</span>
-                  <span style={{ fontSize: 11, color: i === 0 ? 'var(--text-dim)' : 'var(--warning)' }}>
-                    {i === 0 ? trt(lang, 'rptFunnelStart') : trt(lang, 'rptFunnelDrop', { n: digits(lang, stages[i - 1].v ? Math.max(0, Math.round((1 - stage.v / stages[i - 1].v) * 100)) : 0) })}
-                  </span>
-                </div>
-              ))}
+        <PanelTitle aside={stages[0].v > 0 ? null : trt(lang, 'rptNone')}>{trt(lang, 'rptFunnelTitle')}</PanelTitle>
+        <div style={{ width: '100%', transform: rtl ? 'none' : 'scaleX(-1)' }}>{funnelSvg(stages, chartKey)}</div>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(' + stages.length + ',minmax(0,1fr))', gap: 12 }}>
+          {stages.map((stage, i) => (
+            <div key={stage.label} style={{ display: 'flex', flexDirection: 'column', gap: 6, alignItems: 'center', textAlign: 'center', paddingTop: 12, borderTop: '1px solid var(--border-hairline)' }}>
+              <span style={{ fontSize: 11.5, color: 'var(--text-muted)' }}>{stage.label}</span>
+              <span className="navrya-tabular" style={{ fontSize: 22, fontWeight: 700, color: 'var(--parchment)' }}>{digits(lang, stage.v)}</span>
+              <span style={{ fontSize: 11, color: i === 0 ? 'var(--text-dim)' : 'var(--warning)' }}>
+                {i === 0 ? trt(lang, 'rptFunnelStart') : stages[i - 1].v ? trt(lang, 'rptFunnelDrop', { n: digits(lang, Math.max(0, Math.round((1 - stage.v / stages[i - 1].v) * 100))) }) : '—'}
+              </span>
             </div>
-          </React.Fragment>
-        ) : <Muted>{trt(lang, 'rptNone')}</Muted>}
+          ))}
+        </div>
       </div>
     </Panel>
   );
 }
 
+// The trend chart keeps its panel (and height) when there is nothing to plot, as a dashed placeholder that says why - a flat line at 0%
+// would read as a measured 0% accuracy.
 function TrendAndOutcome({ report, lang, chartKey }) {
   const { scenarios } = report;
   const hasWeeks = report.weeklyResolved.some((n) => n > 0);
   const avgLine = movingAverage(report.accuracyTrend, 3);
   return (
-    <div style={{ display: 'flex', flexWrap: 'wrap', gap: 14, alignItems: 'stretch' }}>
-      <Panel variant="base" padding="18px 20px 16px" fill data-report-panel="trend" style={{ flex: '2.1 1 380px', minWidth: 0 }}>
+    <div className="nv-rp-trend">
+      <Panel variant="base" padding="18px 20px 16px" fill data-report-panel="trend">
         <div style={{ display: 'flex', flexDirection: 'column', gap: 14, height: '100%' }}>
           <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', gap: 16, flexWrap: 'wrap' }}>
             <span style={{ fontSize: 15, fontWeight: 600, color: 'var(--parchment)' }}>{trt(lang, 'rptTrendTitle')}</span>
@@ -197,10 +197,10 @@ function TrendAndOutcome({ report, lang, chartKey }) {
               </div>
               <span style={{ fontSize: 11, lineHeight: 1.8, color: 'var(--text-dim)' }}>{trt(lang, 'rptTrendNote')}</span>
             </React.Fragment>
-          ) : <Muted>{trt(lang, 'rptNone')}</Muted>}
+          ) : <div className="nv-rp-empty" data-report-empty-chart="trend" style={{ minBlockSize: 210 }}>{trt(lang, 'rptNone')}</div>}
         </div>
       </Panel>
-      <Panel variant="base" padding="18px 20px" fill data-report-panel="outcome" style={{ flex: '1 1 240px', minWidth: 0 }}>
+      <Panel variant="base" padding="18px 20px" fill data-report-panel="outcome">
         <div style={{ display: 'flex', flexDirection: 'column', gap: 14, alignItems: 'center', justifyContent: 'center', height: '100%' }}>
           <span style={{ fontSize: 14, fontWeight: 600, color: 'var(--parchment)', alignSelf: 'flex-start' }}>{trt(lang, 'rptOutcomeTitle')}</span>
           <span style={{ display: 'block' }}>{donutChart(scenarios.accuracy, 132, trt(lang, 'rptOutcomeConfirmed'), lang)}</span>
@@ -248,44 +248,37 @@ function RDistPanel({ report, lang }) {
   return (
     <Panel variant="base" padding="18px 20px 20px" data-report-panel="rdist">
       <div style={{ display: 'flex', flexDirection: 'column', gap: 15 }}>
-        <PanelTitle aside={dist.counted ? digits(lang, report.trades.avgR) + 'R · ' + trt(lang, 'rptNoteClosed', { n: digits(lang, dist.counted) }) : null}>{trt(lang, 'rptRDistTitle')}</PanelTitle>
-        {dist.counted ? (
-          <React.Fragment>
-            <div style={{ width: '100%' }}>{rDistSvg(dist.buckets)}</div>
-            <div style={{ display: 'flex', gap: 3, direction: 'ltr' }}>
-              {dist.buckets.map((b) => <span key={b.r} style={{ flex: 1, textAlign: 'center', fontSize: 9.5, whiteSpace: 'nowrap', color: 'var(--text-disabled)' }}>{Number.isInteger(b.r) ? rLabel(b.r) : ''}</span>)}
-            </div>
-          </React.Fragment>
-        ) : <Muted>{trt(lang, 'rptRDistEmpty')}</Muted>}
+        <PanelTitle aside={dist.counted ? digits(lang, report.trades.avgR) + 'R · ' + trt(lang, 'rptNoteClosed', { n: digits(lang, dist.counted) }) : trt(lang, 'rptRDistEmpty')}>{trt(lang, 'rptRDistTitle')}</PanelTitle>
+        <div style={{ width: '100%' }}>{rDistSvg(dist.buckets)}</div>
+        <div style={{ display: 'flex', gap: 3, direction: 'ltr' }}>
+          {dist.buckets.map((b) => <span key={b.r} style={{ flex: 1, textAlign: 'center', fontSize: 9.5, whiteSpace: 'nowrap', color: 'var(--text-disabled)' }}>{Number.isInteger(b.r) ? rLabel(b.r) : ''}</span>)}
+        </div>
       </div>
     </Panel>
   );
 }
 
+// The weekday x session grid is always drawn (empty cells while nothing is placed), like the Patterns heat map.
 function HeatPanel({ report, lang }) {
   const heat = report.heatmap;
   return (
     <Panel variant="base" padding="18px 20px 20px" fill data-report-panel="heat">
       <div style={{ display: 'flex', flexDirection: 'column', gap: 15, height: '100%' }}>
         <PanelTitle>{trt(lang, 'rptHeatTitle')}</PanelTitle>
-        {heat.placed ? (
-          <React.Fragment>
-            <div style={{ display: 'grid', gridTemplateColumns: 'minmax(56px,88px) repeat(7,minmax(0,1fr))', gap: 6, alignItems: 'center' }}>
-              <span></span>
-              {heat.weekdays.map((_, i) => <span key={i} style={{ fontSize: 10.5, color: 'var(--text-dim)', textAlign: 'center' }}>{trt(lang, WEEKDAY_KEYS[i])}</span>)}
-              {heat.sessions.map((session, ri) => (
-                <React.Fragment key={session}>
-                  <span style={{ fontSize: 11.5, color: 'var(--text-muted)' }}>{trt(lang, SESSION_KEYS[session])}</span>
-                  {heat.table[ri].map((v, ci) => <span key={ci} style={{ display: 'block' }}>{heatCellEl(v, lang, heat.max)}</span>)}
-                </React.Fragment>
-              ))}
-            </div>
-            <span style={{ display: 'flex', alignItems: 'center', gap: 9, fontSize: 10.5, color: 'var(--text-dim)' }}>
-              {trt(lang, 'rptHeatLow')}<span style={{ flex: 1, height: 6, borderRadius: 3, background: 'linear-gradient(to left,rgba(244,234,215,.06),var(--char-accent))', display: 'block' }}></span>{trt(lang, 'rptHeatHigh')}
-            </span>
-            <span style={{ fontSize: 11, lineHeight: 1.8, color: 'var(--text-dim)' }}>{trt(lang, 'rptHeatNote')}</span>
-          </React.Fragment>
-        ) : <Muted>{trt(lang, 'rptNone')}</Muted>}
+        <div style={{ display: 'grid', gridTemplateColumns: 'minmax(56px,88px) repeat(7,minmax(0,1fr))', gap: 6, alignItems: 'center' }}>
+          <span></span>
+          {heat.weekdays.map((_, i) => <span key={i} style={{ fontSize: 10.5, color: 'var(--text-dim)', textAlign: 'center' }}>{trt(lang, WEEKDAY_KEYS[i])}</span>)}
+          {heat.sessions.map((session, ri) => (
+            <React.Fragment key={session}>
+              <span style={{ fontSize: 11.5, color: 'var(--text-muted)' }}>{trt(lang, SESSION_KEYS[session])}</span>
+              {heat.table[ri].map((v, ci) => <span key={ci} style={{ display: 'block' }}>{heatCellEl(v, lang, heat.max)}</span>)}
+            </React.Fragment>
+          ))}
+        </div>
+        <span style={{ display: 'flex', alignItems: 'center', gap: 9, fontSize: 10.5, color: 'var(--text-dim)' }}>
+          {trt(lang, 'rptHeatLow')}<span style={{ flex: 1, height: 6, borderRadius: 3, background: 'linear-gradient(to left,rgba(244,234,215,.06),var(--char-accent))', display: 'block' }}></span>{trt(lang, 'rptHeatHigh')}
+        </span>
+        <span style={{ fontSize: 11, lineHeight: 1.8, color: 'var(--text-dim)' }}>{heat.placed ? trt(lang, 'rptHeatNote') : trt(lang, 'rptNone')}</span>
         {heat.unplaced > 0 && <span style={{ fontSize: 11, color: 'var(--text-dim)' }}>{trt(lang, 'rptHeatUnplaced', { n: digits(lang, heat.unplaced) })}</span>}
       </div>
     </Panel>
@@ -411,10 +404,16 @@ function EnginePanel({ report, lang }) {
     <Panel variant="base" ornament padding="18px 20px 20px" data-report-panel="engines">
       <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
         <PanelTitle aside={trt(lang, 'rptEngineAside', { n: digits(lang, list.length), runs: digits(lang, report.analyses.total) })}>{trt(lang, 'rptEngineTitle')}</PanelTitle>
-        <ul style={{ margin: 0, padding: 0, display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(min(100%,270px),1fr))', gap: 12, alignItems: 'stretch' }}>
-          {list.map((engine) => <EngineCard key={engine.key} engine={engine} lang={lang} timeZone={report.timeZone} threshold={report.scenarios.smallSampleThreshold} />)}
-        </ul>
-        <span style={{ fontSize: 11, lineHeight: 1.8, color: 'var(--text-dim)' }}>{trt(lang, 'rptEngineNote')}</span>
+        {list.length === 0
+          ? <div className="nv-rp-empty" data-report-empty-chart="engines">{trt(lang, 'rptEngineEmpty')}</div>
+          : (
+            <React.Fragment>
+              <ul style={{ margin: 0, padding: 0, display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(min(100%,270px),1fr))', gap: 12, alignItems: 'stretch' }}>
+                {list.map((engine) => <EngineCard key={engine.key} engine={engine} lang={lang} timeZone={report.timeZone} threshold={report.scenarios.smallSampleThreshold} />)}
+              </ul>
+              <span style={{ fontSize: 11, lineHeight: 1.8, color: 'var(--text-dim)' }}>{trt(lang, 'rptEngineNote')}</span>
+            </React.Fragment>
+          )}
         {unmatchedScenarios > 0 && <span role="note" data-engine-unmatched={unmatchedScenarios} style={{ fontSize: 11, lineHeight: 1.8, color: 'var(--warning)' }}>{trt(lang, 'rptEngineUnmatched', { n: digits(lang, unmatchedScenarios) })}</span>}
       </div>
     </Panel>
@@ -475,6 +474,9 @@ function MaturityPanel({ maturity, lang, timeZone }) {
               <StatBlock stat="lessons" label={trt(lang, 'rptMatLessons')}
                 value={lessons.available ? trt(lang, 'rptMatLessonsValue', { taught: digits(lang, lessons.taught), ai: digits(lang, lessons.aiAssisted) }) : none}
                 sub={lessons.available && lessons.lastAt ? trt(lang, 'rptMatLastLearned', { date: dayLabel(lang, lessons.lastAt, timeZone) }) : null} />
+              <StatBlock stat="tokens" label={trt(lang, 'rptKpiTokens')}
+                value={lessons.available ? digits(lang, lessons.tokens.toLocaleString('en-US')) : none}
+                sub={lessons.available && lessons.aiAssisted ? trt(lang, 'rptNoteAiEvents', { n: digits(lang, lessons.aiAssisted) }) : null} />
             </div>
             {origins.length > 0 && (
               <div data-maturity-origins="true" style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
@@ -516,35 +518,40 @@ function MarketsPanel({ report, lang }) {
   );
 }
 
-// Two panels side by side when there is room, stacked when there is not; both take the height of the taller one.
-const PAIR_GRID = { display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(min(100%,380px),1fr))', gap: 14, alignItems: 'stretch' };
+// Two panels side by side when the report's column is wide enough, stacked when it is not (profile-report.css); both take the height of
+// the taller one. The report is ALWAYS drawn in full - with no analysis recorded yet every panel keeps its place and says what it is
+// waiting for, and a notice on top explains why (an empty page would tell the trader nothing about what the report will contain).
+
+function ReportNotice({ lang }) {
+  return (
+    <Panel variant="base" padding="14px 18px" data-report-notice="empty" style={{ borderColor: 'var(--border-gold)' }}>
+      <div role="status" style={{ display: 'flex', flexDirection: 'column', gap: 5 }}>
+        <span style={{ fontSize: 14, fontWeight: 600, color: 'var(--parchment)' }}>{trt(lang, 'rptEmptyTitle')}</span>
+        <span style={{ fontSize: 12, lineHeight: 1.9, color: 'var(--text-muted)' }}>{trt(lang, 'rptEmptyBody')}</span>
+      </div>
+    </Panel>
+  );
+}
 
 // The drawn report for an already-computed `report` (see analysis-profile-usage.js for its shape) - no loading, no fetching.
 // `maturity` (analysisProfileMaturity.js) is optional: without it the learning panel is simply not drawn.
 export function ProfileReportView({ report, profile, lang, maturity }) {
   const chartKey = String(profile.id).replace(/[^A-Za-z0-9_-]/g, '');
-  if (report.empty) {
-    return (
-      <Panel padding="22px 24px">
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-          <span style={{ fontSize: 15, fontWeight: 600, color: 'var(--parchment)' }}>{trt(lang, 'rptEmptyTitle')}</span>
-          <span style={{ fontSize: 12.5, lineHeight: 1.9, color: 'var(--text-muted)' }}>{trt(lang, 'rptEmptyBody')}</span>
-        </div>
-      </Panel>
-    );
-  }
+  const tracking = trt(lang, 'rptTrackingSince', { date: dayLabel(lang, report.trackingSince, report.timeZone) });
   return (
-    <div data-profile-report="true" style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
-      <span style={{ fontSize: 11.5, lineHeight: 1.8, color: 'var(--text-dim)' }}>{trt(lang, 'rptTrackingSince', { date: dayLabel(lang, report.trackingSince, report.timeZone) })}</span>
+    <div className="nv-rp" data-profile-report="true" data-report-empty={report.empty ? 'true' : 'false'}>
+      {report.empty
+        ? <ReportNotice lang={lang} />
+        : <span data-report-tracking="true" style={{ fontSize: 11.5, lineHeight: 1.8, color: 'var(--text-dim)' }}>{tracking + (report.analyses.lastRunAt ? ' · ' + trt(lang, 'rptLastUsed', { date: dayLabel(lang, report.analyses.lastRunAt, report.timeZone) }) : '')}</span>}
       <KpiRow report={report} lang={lang} />
       <EnginePanel report={report} lang={lang} />
       <FunnelPanel report={report} lang={lang} chartKey={chartKey} />
       <TrendAndOutcome report={report} lang={lang} chartKey={chartKey} />
-      <div style={PAIR_GRID}>
+      <div className="nv-rp-pair">
         <ConceptPanel report={report} profile={profile} lang={lang} />
         {maturity && <MaturityPanel maturity={maturity} lang={lang} timeZone={report.timeZone} />}
       </div>
-      <div style={PAIR_GRID}>
+      <div className="nv-rp-pair">
         <HeatPanel report={report} lang={lang} />
         <MarketsPanel report={report} lang={lang} />
       </div>

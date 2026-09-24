@@ -37,6 +37,9 @@ export function classifyAiError(code, status) {
   if (/_API_KEY_MISSING$/.test(value)) return 'provider';
   if (Number(status) === 401) return 'auth';
   if (Number(status) === 429) return 'quota';
+  // The AI routes always exist on the gateway, so a 404 / 405 (or the community API's own NOT_FOUND) means the request never reached it: a
+  // proxy or routing problem in front of the AI service, which is a connectivity failure - not something "trying again" with the same data fixes.
+  if (value === 'NOT_FOUND' || Number(status) === 404 || Number(status) === 405) return 'network';
   return 'generic';
 }
 

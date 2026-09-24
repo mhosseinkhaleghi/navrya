@@ -115,7 +115,7 @@ export function KpiTile({ icon, label, value, note }) {
         <span style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 10.5, letterSpacing: '.07em', color: 'var(--text-muted)' }}>
           <span style={{ color: 'var(--char-accent)', display: 'grid', placeItems: 'center' }}><Icon name={icon} size={16} /></span>{label}
         </span>
-        <span style={{ display: 'flex', alignItems: 'baseline', gap: 7 }}>
+        <span style={{ display: 'flex', alignItems: 'baseline', gap: '3px 7px', flexWrap: 'wrap' }}>
           <span className="navrya-tabular" style={{ fontSize: 26, fontWeight: 700, color: 'var(--parchment)', lineHeight: 1 }}>{value}</span>
           {note && <span style={{ fontSize: 11, color: 'var(--text-dim)' }}>{note}</span>}
         </span>

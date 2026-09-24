@@ -26,6 +26,8 @@ const CASES = [
   // PDF-provider incompatibility
   ['MODEL_PDF_UNSUPPORTED', 422, 'pdf_provider'],
   // everything else stays generic - never invented
+  // a route that is missing in front of the gateway (the production 404 - the AI prefix was not proxied) is a connectivity failure, not a generic one
+  ['NOT_FOUND', 404, 'network'], ['NOT_FOUND', undefined, 'network'], ['SOMETHING_ELSE', 404, 'network'], ['SOMETHING_ELSE', 405, 'network'],
   ['ANALYSIS_PROFILE_AI_REQUEST_FAILED', 400, 'generic'], ['PATTERN_AI_FAILED', 500, 'generic'], ['', undefined, 'generic'], [undefined, undefined, 'generic']
 ];
 

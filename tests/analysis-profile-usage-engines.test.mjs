@@ -161,3 +161,36 @@ test('existing truthful figures are untouched by the engine breakdown, and compu
   const e = engineOf(r, 'openai', 'gpt-x');
   assert.deepEqual([e.scenarios.added, e.scenarios.confirmed, e.scenarios.invalidated, e.scenarios.open], [r.scenarios.added, r.scenarios.confirmed, r.scenarios.invalidated, r.scenarios.open]);
 });
+
+// ---- usage over time: the last 30 calendar days and the last run --------------------------------------------------------------------
+
+test('recent usage counts whole calendar days (today included) in the trader zone: day 29 back is in, day 30 back is out, a future stamp is never recent', async () => {
+  const usage = await load();
+  const r = j(usage.compute({ profileId: 'p1', now: NOW, timeZone: 'UTC', analyses: [
+    run('today', 'openai', 'gpt-x', { occurredAt: '2026-03-15T00:00:00Z' }), run('d29', 'openai', 'gpt-x', { occurredAt: '2026-02-14T23:59:59Z' }),
+    run('d30', 'openai', 'gpt-x', { occurredAt: '2026-02-13T23:59:59Z' }), run('future', 'openai', 'gpt-x', { occurredAt: '2026-03-16T09:00:00Z' })
+  ] }));
+  assert.equal(r.analyses.total, 4);
+  assert.equal(r.analyses.recent, 2, 'today and day 29');
+  assert.equal(r.analyses.recentDays, 30);
+});
+
+test('recent usage is bucketed by the trader own calendar day, not by elapsed milliseconds (west of UTC, across a DST switch)', async () => {
+  const usage = await load();
+  // 2026-03-15T02:00Z is 19:00 on 14 March in Los Angeles (PDT). 13 Feb 05:00Z is 21:00 on 12 Feb there = 30 calendar days back, although
+  // only 29 days 21 hours have elapsed - a millisecond division would wrongly call it recent.
+  const input = { profileId: 'p1', now: '2026-03-15T02:00:00Z', timeZone: 'America/Los_Angeles', analyses: [
+    run('out', 'openai', 'gpt-x', { occurredAt: '2026-02-13T05:00:00Z' }), run('in', 'openai', 'gpt-x', { occurredAt: '2026-02-14T05:00:00Z' })
+  ] };
+  assert.equal(j(usage.compute(input)).analyses.recent, 1);
+  assert.ok((Date.parse(input.now) - Date.parse('2026-02-13T05:00:00Z')) / 86400000 < 30, 'a plain elapsed-time division would have counted the out-of-window run');
+});
+
+test('the last run is the newest recorded one; with no runs both usage figures are a true 0 / null, never invented', async () => {
+  const usage = await load();
+  const r = j(usage.compute({ profileId: 'p1', now: NOW, analyses: [run('a', 'openai', 'gpt-x', { occurredAt: '2026-03-05T10:00:00Z' }), run('b', 'openai', 'gpt-x', { occurredAt: '2026-03-09T09:30:00Z' }), run('bad', 'openai', 'gpt-x', { occurredAt: 'nope' })] }));
+  assert.equal(r.analyses.lastRunAt, '2026-03-09T09:30:00.000Z');
+  const empty = j(usage.compute({ now: NOW }));
+  assert.equal(empty.analyses.recent, 0);
+  assert.equal(empty.analyses.lastRunAt, null);
+});

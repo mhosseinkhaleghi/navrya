@@ -1524,7 +1524,7 @@ function ReportTab({ lang, kind, item }) {
               <div key={f.label} style={{ display: 'flex', flexDirection: 'column', gap: 6, alignItems: 'center', textAlign: 'center', paddingTop: 12, borderTop: '1px solid var(--border-hairline)' }}>
                 <span style={{ fontSize: 11.5, color: 'var(--text-muted)' }}>{f.label}</span>
                 <span className="navrya-tabular" style={{ fontSize: 22, fontWeight: 700, color: 'var(--parchment)' }}>{digits(lang, f.v)}</span>
-                <span style={{ fontSize: 11, color: i === 0 ? 'var(--text-dim)' : 'var(--warning)' }}>{i === 0 ? tr(lang, 'funnelStart') : tr(lang, 'funnelDrop', { n: digits(lang, Math.max(0, Math.round((1 - f.v / funnelStages[i - 1].v) * 100))) })}</span>
+                <span style={{ fontSize: 11, color: i === 0 ? 'var(--text-dim)' : 'var(--warning)' }}>{i === 0 ? tr(lang, 'funnelStart') : funnelStages[i - 1].v ? tr(lang, 'funnelDrop', { n: digits(lang, Math.max(0, Math.round((1 - f.v / funnelStages[i - 1].v) * 100))) }) : '—'}</span>
               </div>
             ))}
           </div>
