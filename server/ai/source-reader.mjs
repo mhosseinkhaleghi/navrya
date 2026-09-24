@@ -249,16 +249,61 @@ function decodeEntities(text) {
     .replace(/&#(\d+);/g, (_, code) => String.fromCodePoint(Number(code)))
     .replace(/&#x([0-9a-f]+);/gi, (_, code) => String.fromCodePoint(parseInt(code, 16)));
 }
-// Strips non-content elements first (script/style/nav/footer/header/svg/noscript - none of these
+// A line made of nothing but links is navigation (a menu entry, a "related posts" row), not the
+// page's reading content. Marker characters (never present in real text) wrap every link's text so a
+// line can be classified after the tags are gone.
+const LINK_OPEN = '\u0001';
+const LINK_CLOSE = '\u0002';
+// Fewer consecutive link-only lines than this are kept: a couple of them is a sentence with a
+// couple of links in it or a short "see also", which is content. A real menu is longer.
+const MENU_RUN_MIN_LINES = 4;
+const LINK_GROUP = new RegExp(`${LINK_OPEN}[^${LINK_CLOSE}]*${LINK_CLOSE}`, 'g');
+const LINK_SEPARATORS = /^[\s|·•/>»›\-–—,:]*$/;
+
+function isLinkOnlyLine(line) {
+  return line.indexOf(LINK_OPEN) > -1 && LINK_SEPARATORS.test(line.replace(LINK_GROUP, ''));
+}
+
+// Drops runs of MENU_RUN_MIN_LINES+ consecutive link-only lines, then removes the link markers.
+function dropNavigationRuns(lines) {
+  const kept = [];
+  let run = [];
+  const flush = () => { if (run.length < MENU_RUN_MIN_LINES) kept.push(...run); run = []; };
+  for (const line of lines) {
+    if (isLinkOnlyLine(line)) run.push(line);
+    else { flush(); kept.push(line); }
+  }
+  flush();
+  return kept.map((line) => line.split(LINK_OPEN).join('').split(LINK_CLOSE).join('').replace(/[ \t]+/g, ' ').trim()).filter(Boolean);
+}
+
+// Strips non-content elements first (script/style/nav/footer/header/aside/svg/form/... - none of these
 // carry the article's own reading content), then every remaining tag, then collapses whitespace -
 // a real HTML parser is not needed for "get the readable text out", only for perfect fidelity.
-function htmlToText(html) {
-  const stripped = html
+//
+// Semantic elements alone are not enough. Many real sites (found on a live page a trader taught the
+// engine from) build their header and menus out of plain <div>/<ul> with no <nav> or <header> at all,
+// so the menu text - twice, once for the mobile menu and once for the desktop one - filled the first
+// quarter of the 6000-character digest and the article did not start until character ~1500. Two more
+// steps handle that: the digest starts at the page's first <h1> (everything before the main heading is
+// header furniture on essentially every site), and runs of link-only lines are dropped as navigation.
+// The <head> is dropped too: the title is captured separately, and it would otherwise be prepended to
+// the digest a second time.
+export function htmlToText(html) {
+  const cleaned = html
     .replace(/<!--[\s\S]*?-->/g, ' ')
-    .replace(/<(script|style|noscript|nav|footer|header|svg|form)[^>]*>[\s\S]*?<\/\1>/gi, ' ')
-    .replace(/<(br|p|div|li|h[1-6]|tr)[^>]*>/gi, '\n')
+    .replace(/<head[\s>][\s\S]*?<\/head>/i, ' ')
+    .replace(/<(script|style|noscript|nav|footer|header|aside|menu|svg|form|iframe|template|select|button)\b[^>]*>[\s\S]*?<\/\1>/gi, ' ');
+  const heading = cleaned.search(/<h1[\s>]/i);
+  // Only trust the heading when it sits in the first part of the document; a stray <h1> near the
+  // end (a footer logo) must not throw the whole article away.
+  const scoped = heading > -1 && heading < cleaned.length * 0.6 ? cleaned.slice(heading) : cleaned;
+  const stripped = scoped
+    .replace(/<a(?:\s[^>]*)?>([\s\S]*?)<\/a>/gi, (_, inner) => LINK_OPEN + inner.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim() + LINK_CLOSE)
+    .replace(/<\/?(br|p|div|li|ul|ol|h[1-6]|tr|section|article|table|blockquote|pre|dt|dd|figcaption)\b[^>]*>/gi, '\n')
     .replace(/<[^>]+>/g, ' ');
-  return decodeEntities(stripped).replace(/[ \t]+/g, ' ').replace(/\n\s*\n+/g, '\n').replace(/ *\n */g, '\n').trim();
+  const lines = decodeEntities(stripped).replace(/[ \t]+/g, ' ').split('\n').map((line) => line.trim()).filter(Boolean);
+  return dropNavigationRuns(lines).join('\n');
 }
 
 // The one caller-facing function for a website source: fetches, extracts a title and a BOUNDED
