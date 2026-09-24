@@ -5,7 +5,9 @@ import { Button } from '../public/pages/shared/navrya/components/forms/Button.js
 import { Chip } from '../public/pages/shared/navrya/components/forms/Chip.jsx';
 import { Select } from '../public/pages/shared/navrya/components/forms/Select.jsx';
 import { Modal } from '../public/pages/shared/navrya/components/feedback/Modal.jsx';
-import { AnalysisProfileOnboarding, SPECIAL_STYLE_IDS, FocusChip } from './analysisProfileOnboarding.jsx';
+import { AnalysisProfileOnboarding, FocusChip } from './analysisProfileOnboarding.jsx';
+import { AnalysisDna, LensNotice } from './analysisProfileDna.jsx';
+import { SPECIAL_STYLE_IDS, applyLensChange, lensOfProfile, reconcileLens, toggleSecondaryLens } from './analysisProfileLens.js';
 import { ConceptsTab } from './analysisProfileConcepts.jsx';
 import { MemoryTab } from './analysisProfileMemory.jsx';
 import { KnowledgeTab } from './analysisProfileKnowledge.jsx';
@@ -160,17 +162,24 @@ function linkedStrategiesFor(profileId) {
   return store.listSync().filter((s) => s.linkedAnalysisProfileId === profileId);
 }
 
-function ProfileCard({ profile, lang, onOpen, onEdit, onDuplicate, onSetDefault, onReport, onDelete }) {
+// Exported for the structural tests (tests/analysis-profile-card-alignment.test.mjs). A card is a column: the head (name, lens,
+// badges) at the top, the focus chips taking whatever room is left, and the counts + actions pinned to the bottom - so in a
+// grid row of cards with different amounts of data (one focus chip or eight, a one-line lens or a three-lens hybrid) the
+// titles, the counts and the buttons still line up. The focus chips are the ones that belong to the profile's lens
+// (analysisProfileLens.js): a stale registry focus is never shown on a card as if it were active.
+export function ProfileCard({ profile, lang, onOpen, onEdit, onDuplicate, onSetDefault, onReport, onDelete }) {
   const linked = linkedStrategiesFor(profile.id);
+  const lens = lensOfProfile({ styles: styleRegistry(), focuses: focusRegistry() }, profile);
+  const shownFocus = lens.focusIds.slice(0, 4);
   return (
-    <Panel padding="0">
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 14, padding: 18 }}>
-        <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 10 }}>
+    <Panel padding="0" fill style={{ display: 'flex', flexDirection: 'column' }} data-profile-card="true">
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 14, padding: 18, flex: 1, minHeight: 0, boxSizing: 'border-box' }}>
+        <div data-card-section="head" style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 10 }}>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 6, minWidth: 0 }}>
-            <span style={{ fontSize: 15.5, fontWeight: 700, color: 'var(--parchment)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{profile.name || styleName(profile.primaryStyleId, lang)}</span>
-            <span style={{ fontSize: 12, color: 'var(--char-accent)' }}>
+            <span title={profile.name || ''} style={{ fontSize: 15.5, fontWeight: 700, color: 'var(--parchment)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{profile.name || styleName(profile.primaryStyleId, lang)}</span>
+            <span data-card-lens="true" style={{ fontSize: 12, lineHeight: '16px', minHeight: 32, color: 'var(--char-accent)', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>
               {styleName(profile.primaryStyleId, lang)}
-              {profile.secondaryStyleIds.length > 0 && ' + ' + profile.secondaryStyleIds.map((id) => styleName(id, lang)).join(' + ')}
+              {lens.secondaryStyleIds.length > 0 && ' + ' + lens.secondaryStyleIds.map((id) => styleName(id, lang)).join(' + ')}
             </span>
           </div>
           <div style={{ display: 'flex', gap: 6, flex: 'none' }}>
@@ -179,27 +188,29 @@ function ProfileCard({ profile, lang, onOpen, onEdit, onDuplicate, onSetDefault,
           </div>
         </div>
 
-        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
-          {profile.focusIds.slice(0, 4).map((id) => (
+        <div data-card-section="focus" style={{ display: 'flex', flexWrap: 'wrap', gap: 6, alignContent: 'flex-start', flex: 1 }}>
+          {shownFocus.map((id) => (
             <span key={id} style={{ fontSize: 11, padding: '4px 9px', borderRadius: 999, background: 'rgba(3,8,7,.4)', border: '1px solid var(--border-hairline)', color: 'var(--text-primary)' }}>{focusName(id, lang)}</span>
           ))}
-          {profile.focusIds.length > 4 && <span style={{ fontSize: 11, color: 'var(--text-dim)', alignSelf: 'center' }}>+{digits(lang, profile.focusIds.length - 4)}</span>}
+          {lens.focusIds.length > shownFocus.length && <span style={{ fontSize: 11, color: 'var(--text-dim)', alignSelf: 'center' }}>+{digits(lang, lens.focusIds.length - shownFocus.length)}</span>}
         </div>
 
-        <div style={{ display: 'flex', gap: 14, fontSize: 11.5, color: 'var(--text-dim)' }}>
-          <span>{tr(lang, 'strategyCount', { n: digits(lang, linked.length) })}</span>
-          <span>{tr(lang, 'focusCount', { n: digits(lang, profile.focusIds.length) })}</span>
-        </div>
+        <div data-card-section="footer" style={{ marginTop: 'auto', display: 'flex', flexDirection: 'column', gap: 14 }}>
+          <div style={{ display: 'flex', gap: 14, flexWrap: 'wrap', fontSize: 11.5, color: 'var(--text-dim)' }}>
+            <span>{tr(lang, 'strategyCount', { n: digits(lang, linked.length) })}</span>
+            <span>{tr(lang, 'focusCount', { n: digits(lang, lens.focusIds.length) })}</span>
+          </div>
 
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
-          <Button variant="primary" size="sm" icon="open" onClick={onOpen}>{tr(lang, 'open')}</Button>
-          <Button variant="secondary" size="sm" icon="edit" onClick={onEdit}>{tr(lang, 'edit')}</Button>
-          <Button variant="secondary" size="sm" icon="copy" onClick={onDuplicate}>{tr(lang, 'duplicate')}</Button>
-          {!profile.isDefault && <Button variant="secondary" size="sm" icon="honour" onClick={onSetDefault}>{tr(lang, 'setDefault')}</Button>}
-          <Button variant="secondary" size="sm" icon="report" onClick={onReport}>{tr(lang, 'report')}</Button>
-          <span style={{ marginInlineStart: 'auto' }}>
-            <Button variant="ghost" size="sm" icon="trash" onClick={onDelete}> </Button>
-          </span>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+            <Button variant="primary" size="sm" icon="open" onClick={onOpen}>{tr(lang, 'open')}</Button>
+            <Button variant="secondary" size="sm" icon="edit" onClick={onEdit}>{tr(lang, 'edit')}</Button>
+            <Button variant="secondary" size="sm" icon="copy" onClick={onDuplicate}>{tr(lang, 'duplicate')}</Button>
+            {!profile.isDefault && <Button variant="secondary" size="sm" icon="honour" onClick={onSetDefault}>{tr(lang, 'setDefault')}</Button>}
+            <Button variant="secondary" size="sm" icon="report" onClick={onReport}>{tr(lang, 'report')}</Button>
+            <span style={{ marginInlineStart: 'auto' }}>
+              <Button variant="ghost" size="sm" icon="trash" onClick={onDelete}> </Button>
+            </span>
+          </div>
         </div>
       </div>
     </Panel>
@@ -223,9 +234,16 @@ function ReportRow({ label, value }) {
 // never an autosave-per-keystroke.
 function SetupTab({ profile, lang, onUpdate }) {
   const styles = styleRegistry(), focuses = focusRegistry();
+  const registries = { styles, focuses };
   const helpers = profileStore() && profileStore().helpers;
-  const [secondaryStyleIds, setSecondaryStyleIds] = React.useState(profile.secondaryStyleIds);
-  const [focusIds, setFocusIds] = React.useState(profile.focusIds);
+  // A stored profile may still carry focus areas that no longer fit its lens (or a duplicated lens) from before lens changes were
+  // reconciled. They are not left selected-but-invisible: the tab opens with them already taken out of the selection and says so,
+  // and saving persists the reconciled selection.
+  const seed = React.useMemo(() => lensOfProfile(registries, profile), []);
+  const [secondaryStyleIds, setSecondaryStyleIds] = React.useState(seed.secondaryStyleIds);
+  const [focusIds, setFocusIds] = React.useState(seed.focusIds);
+  const [lensNotice, setLensNotice] = React.useState(seed.staleFocusIds.length || seed.removedSecondaryIds.length
+    ? { removedFocusIds: seed.staleFocusIds, secondaryRemoved: seed.removedSecondaryIds.length > 0, mode: 'stale' } : null);
   const [customFocuses, setCustomFocuses] = React.useState(profile.customFocuses || []);
   const [customMethodNotes, setCustomMethodNotes] = React.useState(profile.customMethodNotes || '');
   const seedLinks = profile.customMethodLinks || {};
@@ -243,21 +261,21 @@ function SetupTab({ profile, lang, onUpdate }) {
   const styleOptions = allStyles.map((st) => ({ value: st.id, label: st.name[lang] || st.name.en }));
   const secondaryOptions = allStyles.filter((st) => st.id !== primaryStyleId && SPECIAL_STYLE_IDS.indexOf(st.id) === -1);
   const isCustom = primaryStyleId === 'custom_method';
-  const focusGroups = isCustom
-    ? { recommended: [], optional: focuses ? focuses.list() : [] }
-    : (styles ? (() => {
-        const merged = styles.mergeFocusRecommendations(primaryStyleId, secondaryStyleIds);
-        return { recommended: merged.recommended.map((id) => focuses.get(id)).filter(Boolean), optional: merged.optional.map((id) => focuses.get(id)).filter(Boolean) };
-      })() : { recommended: [], optional: [] });
+  const focusGroups = reconcileLens({ styles, focuses, primaryStyleId, secondaryStyleIds, focusIds }).groups;
 
   function toggleFocus(id) { setFocusIds((prev) => (prev.indexOf(id) > -1 ? prev.filter((fid) => fid !== id) : prev.concat(id))); }
-  function toggleSecondary(id) {
-    setSecondaryStyleIds((prev) => {
-      if (prev.indexOf(id) > -1) return prev.filter((sid) => sid !== id);
-      if (prev.length >= 2) return prev;
-      return prev.concat(id);
-    });
+  // Every lens change - the primary Select, a complementary chip - is ONE reconciled step: the primary is taken out of the complementary
+  // lenses, and the focus areas that no longer fit the new lens are removed from the selection (and named in the notice) instead of
+  // staying selected behind chips that are no longer shown.
+  function applyLens(change) {
+    const next = applyLensChange(registries, { primaryStyleId, secondaryStyleIds, focusIds }, change);
+    setPrimaryStyleId(next.primaryStyleId);
+    setSecondaryStyleIds(next.secondaryStyleIds);
+    setFocusIds(next.focusIds);
+    setLensNotice({ removedFocusIds: next.removedFocusIds, secondaryRemoved: 'primaryStyleId' in change && secondaryStyleIds.indexOf(change.primaryStyleId) > -1, mode: 'removed' });
   }
+  function changePrimary(id) { applyLens({ primaryStyleId: id }); }
+  function toggleSecondary(id) { applyLens({ secondaryStyleIds: toggleSecondaryLens(secondaryStyleIds, id) }); }
   function addFocus() {
     if (!helpers || !newFocusName.trim()) return;
     const made = helpers.makeCustomFocus({ name: newFocusName, description: newFocusDescription, origin: 'user' });
@@ -268,10 +286,13 @@ function SetupTab({ profile, lang, onUpdate }) {
   function removeFocus(id) { setCustomFocuses((prev) => prev.filter((f) => f.id !== id)); }
 
   function save() {
+    // Reconciled once more at the door: what is persisted is always a lens and a focus selection that belong together.
+    const lens = reconcileLens({ styles, focuses, primaryStyleId, secondaryStyleIds, focusIds });
     onUpdate({
-      primaryStyleId, secondaryStyleIds: isCustom ? [] : secondaryStyleIds, focusIds, customFocuses,
+      primaryStyleId: lens.primaryStyleId, secondaryStyleIds: lens.secondaryStyleIds, focusIds: lens.focusIds, customFocuses,
       customMethodNotes, customMethodLinks: { youtubeUrl, websiteUrl, referenceUrl }
     });
+    setLensNotice(null);
     setSaved(true);
     window.setTimeout(() => setSaved(false), 2400);
   }
@@ -281,8 +302,10 @@ function SetupTab({ profile, lang, onUpdate }) {
       <div style={{ display: 'flex', flexDirection: 'column', gap: 18 }}>
         <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
           <span style={{ fontSize: 11.5, color: 'var(--text-dim)' }}>{tr(lang, 'setupPrimaryLabel')}</span>
-          <Select value={primaryStyleId} onChange={setPrimaryStyleId} options={styleOptions} icon="strategies" width={280} />
+          <Select value={primaryStyleId} onChange={changePrimary} options={styleOptions} icon="strategies" width={280} />
         </div>
+
+        {lensNotice && <LensNotice lang={lang} removedFocusIds={lensNotice.removedFocusIds} secondaryRemoved={lensNotice.secondaryRemoved} mode={lensNotice.mode} />}
 
         {!isCustom && (
           <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
@@ -385,63 +408,24 @@ function ProfileDetail({ profile, lang, dtab, setDtab, queuedLinks, onBack, onEd
         </span>
       </div>
 
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 8, padding: 22, borderRadius: 14, border: '1px solid var(--border-gold)', background: 'var(--surface-card)', boxShadow: 'var(--shadow-panel)' }}>
-        <span style={{ fontSize: 11, letterSpacing: '.1em', textTransform: 'uppercase', color: 'var(--char-accent)' }}>{tr(lang, 'dnaLabel')}</span>
-        <span style={{ fontSize: 24, fontWeight: 700, color: 'var(--parchment)' }}>{profile.name}</span>
-        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 24, marginTop: 6 }}>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 5 }}>
-            <span style={{ fontSize: 10.5, color: 'var(--text-dim)' }}>{tr(lang, 'primaryLens')}</span>
-            <span style={{ fontSize: 13, fontWeight: 600, color: 'var(--char-accent)' }}>{primary ? (primary.name[lang] || primary.name.en) : profile.primaryStyleId}</span>
-          </div>
-          {profile.secondaryStyleIds.length > 0 && (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 5 }}>
-              <span style={{ fontSize: 10.5, color: 'var(--text-dim)' }}>{tr(lang, 'secondaryLens')}</span>
-              <span style={{ fontSize: 13, color: 'var(--text-primary)' }}>{profile.secondaryStyleIds.map((id) => styleName(id, lang)).join(' + ')}</span>
+      <AnalysisDna lang={lang} profile={profile} showName />
+
+      {(profile.description || profile.customMethodNotes) && (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+          {profile.description && <p dir="auto" style={{ margin: 0, fontSize: 12.5, lineHeight: 1.9, color: 'var(--text-muted)' }}>{profile.description}</p>}
+          {profile.customMethodNotes && (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+              <span style={{ fontSize: 10.5, color: 'var(--text-dim)' }}>{tr(lang, 'customNotes')}</span>
+              <p dir="auto" style={{ margin: 0, fontSize: 12.5, lineHeight: 1.9, color: 'var(--text-muted)', whiteSpace: 'pre-wrap' }}>{profile.customMethodNotes}</p>
             </div>
           )}
         </div>
-        {profile.focusIds.length > 0 && (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginTop: 6 }}>
-            <span style={{ fontSize: 10.5, color: 'var(--text-dim)' }}>{tr(lang, 'coreFocus')}</span>
-            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
-              {profile.focusIds.map((id) => <Chip key={id}>{focusName(id, lang)}</Chip>)}
-            </div>
-          </div>
-        )}
-        {(profile.customFocuses || []).length > 0 && (
-          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
-            {profile.customFocuses.map((f) => <Chip key={f.id} tone="accent">{f.name}</Chip>)}
-          </div>
-        )}
-        {/* What the engine has learned so far - concepts (mandatory ones highlighted) and its own
-            current understanding - so opening a profile shows more than the style/focus DNA. */}
-        {(profile.concepts || []).length > 0 && (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginTop: 6 }}>
-            <span style={{ fontSize: 10.5, color: 'var(--text-dim)' }}>{trt(lang, 'conceptsTitle')} · {trt(lang, 'conceptsCount', { n: trDigits(lang, profile.concepts.length), m: trDigits(lang, profile.concepts.filter((c) => c.priority === 'mandatory').length) })}</span>
-            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
-              {profile.concepts.filter((c) => c.enabled).slice(0, 12).map((c) => <Chip key={c.id} tone={c.priority === 'mandatory' ? 'accent' : 'neutral'}>{c.title}</Chip>)}
-            </div>
-          </div>
-        )}
-        {profile.understanding && profile.understanding.summary && (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 4, marginTop: 6 }}>
-            <span style={{ fontSize: 10.5, color: 'var(--text-dim)' }}>{trt(lang, 'understandingTitle')} · {trt(lang, 'understandingVersion', { n: trDigits(lang, profile.understanding.version) })}</span>
-            <p dir="auto" style={{ margin: 0, fontSize: 12.5, lineHeight: 1.9, color: 'var(--text-muted)', whiteSpace: 'pre-wrap' }}>{profile.understanding.summary.length > 420 ? profile.understanding.summary.slice(0, 420) + '…' : profile.understanding.summary}</p>
-          </div>
-        )}
-        {profile.description && <p style={{ margin: '10px 0 0', fontSize: 12.5, color: 'var(--text-muted)' }}>{profile.description}</p>}
-        {profile.customMethodNotes && (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 4, marginTop: 6 }}>
-            <span style={{ fontSize: 10.5, color: 'var(--text-dim)' }}>{tr(lang, 'customNotes')}</span>
-            <p dir="auto" style={{ margin: 0, fontSize: 12.5, color: 'var(--text-muted)', whiteSpace: 'pre-wrap' }}>{profile.customMethodNotes}</p>
-          </div>
-        )}
-        <label style={{ display: 'flex', alignItems: 'center', gap: 10, marginTop: 10, fontSize: 12, color: 'var(--text-dim)' }}>
-          <input type="checkbox" checked={profile.isActive} onChange={(e) => onToggleActive(e.target.checked)} />
-          {profile.isActive ? tr(lang, 'activeBadge') : tr(lang, 'inactiveBadge')}
-          <span style={{ color: 'var(--text-dim)' }}>— {tr(lang, 'activeToggleHelp')}</span>
-        </label>
-      </div>
+      )}
+      <label style={{ display: 'flex', alignItems: 'center', gap: 10, fontSize: 12, color: 'var(--text-dim)' }}>
+        <input type="checkbox" checked={profile.isActive} onChange={(e) => onToggleActive(e.target.checked)} />
+        {profile.isActive ? tr(lang, 'activeBadge') : tr(lang, 'inactiveBadge')}
+        <span style={{ color: 'var(--text-dim)' }}>— {tr(lang, 'activeToggleHelp')}</span>
+      </label>
 
       <div style={{ display: 'flex', gap: 6, padding: 6, border: '1px solid var(--border-gold)', borderRadius: 10, background: 'var(--surface-card)', width: 'fit-content' }}>
         {[['overview', tr(lang, 'tabOverview')], ['setup', tr(lang, 'tabSetup')], ['concepts', tr(lang, 'tabConcepts')], ['knowledge', tr(lang, 'tabKnowledge')], ['memory', tr(lang, 'tabMemory')], ['chat', tr(lang, 'tabChat')], ['preview', tr(lang, 'tabPreview')], ['report', tr(lang, 'tabReport')]].map(([id, label]) => (
@@ -658,7 +642,7 @@ export function AnalysisProfilesTab({ lang, header }) {
           </div>
         </Panel>
       ) : (
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill,minmax(340px,1fr))', gap: 16, alignItems: 'start' }}>
+        <div data-profile-grid="true" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill,minmax(min(100%,340px),1fr))', gap: 16, alignItems: 'stretch' }}>
           {filtered.map((profile) => (
             <ProfileCard
               key={profile.id} profile={profile} lang={lang}

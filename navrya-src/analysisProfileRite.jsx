@@ -5,7 +5,9 @@ import { BrandLockup } from '../public/pages/shared/navrya/components/brand/Bran
 import { assetUrl } from '../public/pages/shared/navrya/components/core/AssetBase.jsx';
 import { stringsFor } from './i18n.js';
 import { CHARACTERS } from './characters.js';
-import { SPECIAL_STYLE_IDS, FEATURED_STYLE_IDS, copy as baseCopy } from './analysisProfileOnboarding.jsx';
+import { FEATURED_STYLE_IDS, copy as baseCopy } from './analysisProfileOnboarding.jsx';
+import { LensNotice } from './analysisProfileDna.jsx';
+import { SPECIAL_STYLE_IDS, applyLensChange, reconcileLens, toggleSecondaryLens } from './analysisProfileLens.js';
 import { AiErrorNotice } from './analysisProfileAiStatus.jsx';
 import { toAiError } from './analysisProfileAiErrors.js';
 
@@ -447,6 +449,9 @@ export function AnalysisProfileRite({ lang, character, navryaCharacter, onComple
   const [websiteUrl, setWebsiteUrl] = React.useState('');
   const [referenceUrl, setReferenceUrl] = React.useState('');
   const [focusIds, setFocusIds] = React.useState([]);
+  const [lensNotice, setLensNotice] = React.useState(null);
+  const lensRef = React.useRef(null);
+  lensRef.current = { primaryStyleId, secondaryStyleIds, focusIds };
   const [customFocuses, setCustomFocuses] = React.useState([]);
   const [newFocusName, setNewFocusName] = React.useState('');
   const [newFocusDescription, setNewFocusDescription] = React.useState('');
@@ -476,24 +481,25 @@ export function AnalysisProfileRite({ lang, character, navryaCharacter, onComple
   // never "loses" what was typed when the trader later returns to this step.
   const styleSearchResults = trimmedQuery && styles ? styles.search(trimmedQuery) : null;
 
+  // The same reconciled lens step as the wizard and the Setup tab (analysisProfileLens.js): the primary lens leaves the complementary
+  // list, and focus areas that no longer fit the new lens are removed from the selection and named - never kept hidden.
+  function applyLens(change) {
+    const before = lensRef.current;
+    const next = applyLensChange({ styles, focuses }, before, change);
+    lensRef.current = { primaryStyleId: next.primaryStyleId, secondaryStyleIds: next.secondaryStyleIds, focusIds: next.focusIds };
+    setPrimaryStyleId(next.primaryStyleId);
+    setSecondaryStyleIds(next.secondaryStyleIds);
+    setFocusIds(next.focusIds);
+    setLensNotice({ removedFocusIds: next.removedFocusIds, secondaryRemoved: 'primaryStyleId' in change && before.secondaryStyleIds.indexOf(change.primaryStyleId) > -1, mode: 'removed' });
+  }
   function pickPrimary(id) {
-    if (id === 'hybrid') { setHybridMode(true); setPrimaryStyleId(''); setSecondaryStyleIds([]); return; }
+    if (id === 'hybrid') { setHybridMode(true); applyLens({ primaryStyleId: '', secondaryStyleIds: [] }); return; }
     setHybridMode(false);
-    setPrimaryStyleId(id);
-    setSecondaryStyleIds([]);
+    applyLens({ primaryStyleId: id, secondaryStyleIds: [] });
     if (id !== 'custom_method') setCustomMethodNotes('');
   }
-  function pickHybridPrimary(id) {
-    setPrimaryStyleId(id);
-    setSecondaryStyleIds((prev) => prev.filter((sid) => sid !== id));
-  }
-  function toggleSecondary(id) {
-    setSecondaryStyleIds((prev) => {
-      if (prev.indexOf(id) > -1) return prev.filter((sid) => sid !== id);
-      if (prev.length >= 2) return prev;
-      return prev.concat(id);
-    });
-  }
+  function pickHybridPrimary(id) { applyLens({ primaryStyleId: id }); }
+  function toggleSecondary(id) { applyLens({ secondaryStyleIds: toggleSecondaryLens(lensRef.current.secondaryStyleIds, id) }); }
   function toggleFocus(id) {
     setFocusIds((prev) => (prev.indexOf(id) > -1 ? prev.filter((fid) => fid !== id) : prev.concat(id)));
   }
@@ -543,16 +549,10 @@ export function AnalysisProfileRite({ lang, character, navryaCharacter, onComple
   const lensValid = Boolean(primaryStyleId) && customNotesOk;
   const focusValid = focusIds.length > 0 || customFocuses.length > 0;
 
-  const focusGroups = React.useMemo(() => {
-    if (!primaryStyleId) return { recommended: [], optional: [] };
-    if (isCustom) return { recommended: [], optional: focuses ? focuses.list() : [] };
-    if (!styles) return { recommended: [], optional: [] };
-    const merged = styles.mergeFocusRecommendations(primaryStyleId, secondaryStyleIds);
-    return {
-      recommended: merged.recommended.map((id) => focuses.get(id)).filter(Boolean),
-      optional: merged.optional.map((id) => focuses.get(id)).filter(Boolean)
-    };
-  }, [primaryStyleId, secondaryStyleIds, isCustom, styles, focuses]);
+  const focusGroups = React.useMemo(
+    () => reconcileLens({ styles, focuses, primaryStyleId, secondaryStyleIds, focusIds: [] }).groups,
+    [primaryStyleId, secondaryStyleIds, styles, focuses]
+  );
 
   const primaryDef = styles ? styles.get(primaryStyleId) : null;
   const secondaryDefs = secondaryStyleIds.map((id) => styles && styles.get(id)).filter(Boolean);
@@ -562,7 +562,8 @@ export function AnalysisProfileRite({ lang, character, navryaCharacter, onComple
   function buildDraft() {
     return {
       name: name.trim() || (window.TradeJournalAnalysisProfileStore ? window.TradeJournalAnalysisProfileStore.suggestedName(primaryStyleId, focusIds, activeLang) : ''),
-      primaryStyleId, secondaryStyleIds, focusIds, customMethodNotes,
+      ...(() => { const lens = reconcileLens({ styles, focuses, primaryStyleId, secondaryStyleIds, focusIds }); return { primaryStyleId: lens.primaryStyleId, secondaryStyleIds: lens.secondaryStyleIds, focusIds: lens.focusIds }; })(),
+      customMethodNotes,
       customMethodLinks: { youtubeUrl, websiteUrl, referenceUrl }, customFocuses
     };
   }
@@ -617,6 +618,7 @@ export function AnalysisProfileRite({ lang, character, navryaCharacter, onComple
                   <span className="nv-rite__eyebrow nv-rite__rise" style={{ '--nv-i': 0 }}>{tr(activeLang, 'eyebrowLens')}</span>
                   <h2 className="nv-rite__q nv-rite__rise" style={{ '--nv-i': 1 }}>{tr(activeLang, 'step1Title')}</h2>
                   <p className="nv-rite__sub nv-rite__rise" style={{ '--nv-i': 2 }}>{tr(activeLang, 'step1Subtitle')}</p>
+                  {lensNotice && <LensNotice lang={activeLang} removedFocusIds={lensNotice.removedFocusIds} secondaryRemoved={lensNotice.secondaryRemoved} mode={lensNotice.mode} />}
 
                   {!hybridMode ? (
                     <React.Fragment>
@@ -717,7 +719,7 @@ export function AnalysisProfileRite({ lang, character, navryaCharacter, onComple
                   ) : (
                     <React.Fragment>
                       <button type="button" className="nv-rite__link nv-rite__rise" style={{ '--nv-i': 3, color: 'var(--text-muted)' }}
-                        onClick={() => { setHybridMode(false); setPrimaryStyleId(''); setSecondaryStyleIds([]); }}>
+                        onClick={() => { setHybridMode(false); applyLens({ primaryStyleId: '', secondaryStyleIds: [] }); }}>
                         <Icon name="active-arrow" size={14} style={{ transform: rtl ? 'none' : 'rotate(180deg)' }} />
                         {tr(activeLang, 'backToStyles')}
                       </button>
@@ -749,6 +751,7 @@ export function AnalysisProfileRite({ lang, character, navryaCharacter, onComple
                   <span className="nv-rite__eyebrow nv-rite__rise" style={{ '--nv-i': 0 }}>{tr(activeLang, 'eyebrowFocus')}</span>
                   <h2 className="nv-rite__q nv-rite__rise" style={{ '--nv-i': 1 }}>{tr(activeLang, 'step2Title')}</h2>
                   <p className="nv-rite__sub nv-rite__rise" style={{ '--nv-i': 2 }}>{tr(activeLang, 'step2Subtitle')}</p>
+                  {lensNotice && <LensNotice lang={activeLang} removedFocusIds={lensNotice.removedFocusIds} secondaryRemoved={lensNotice.secondaryRemoved} mode={lensNotice.mode} />}
 
                   {focusGroups.recommended.length > 0 && (
                     <div className="nv-rite__rise" style={{ '--nv-i': 3, display: 'flex', flexDirection: 'column', gap: 8 }}>

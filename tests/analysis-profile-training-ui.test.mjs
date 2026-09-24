@@ -229,8 +229,10 @@ test('the profile detail pill bar exposes Concepts, Knowledge and Memory, and re
 });
 
 test('the Overview card shows what the engine has learned (concepts with mandatory ones highlighted, and the current understanding), not just the style/focus DNA', async () => {
-  const source = await read('analysisProfilesView.jsx');
-  assert.match(source, /profile\.concepts\.filter\(\(c\) => c\.enabled\)/);
-  assert.match(source, /c\.priority === 'mandatory' \? 'accent' : 'neutral'/);
-  assert.match(source, /profile\.understanding\.summary/);
+  // The DNA block is the shared AnalysisDna (analysisProfileDna.jsx); the detail passes it the whole profile, concepts and understanding included.
+  assert.match(await read('analysisProfilesView.jsx'), /<AnalysisDna lang=\{lang\} profile=\{profile\} showName \/>/);
+  const dna = await read('analysisProfileDna.jsx');
+  assert.match(dna, /p\.concepts\.filter\(\(c\) => c && c\.enabled\)/);
+  assert.match(dna, /c\.priority === 'mandatory' \? 'accent' : 'neutral'/);
+  assert.match(dna, /p\.understanding && p\.understanding\.summary/);
 });

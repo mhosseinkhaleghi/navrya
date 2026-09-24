@@ -4,6 +4,8 @@ import { Button } from '../public/pages/shared/navrya/components/forms/Button.js
 import { Icon } from '../public/pages/shared/navrya/components/core/Icon.jsx';
 import { AiErrorNotice } from './analysisProfileAiStatus.jsx';
 import { toAiError } from './analysisProfileAiErrors.js';
+import { AnalysisDna, LensNotice } from './analysisProfileDna.jsx';
+import { SPECIAL_STYLE_IDS, applyLensChange, lensOfProfile, reconcileLens, toggleSecondaryLens } from './analysisProfileLens.js';
 
 // Analysis Profiles domain (see ARCHITECTURE.md §7.25). The exact TWO-step questionnaire the
 // brief specifies - Step 1 "how do you read the market" (style), Step 2 "what do your eyes look
@@ -21,9 +23,8 @@ import { toAiError } from './analysisProfileAiErrors.js';
 
 // Exported: analysisProfileRite.jsx's full-screen Lens step renders the exact same featured grid.
 export const FEATURED_STYLE_IDS = ['price_action', 'classical_ta', 'smc', 'liquidity_analysis', 'ichimoku', 'wyckoff', 'elliott_wave', 'order_flow'];
-// Exported: analysisProfilesView.jsx's inline Setup tab filters the same three special ids out of its
-// secondary-style dropdown, and must never keep a second, driftable copy of this list.
-export const SPECIAL_STYLE_IDS = ['general_analysis', 'hybrid', 'custom_method'];
+// SPECIAL_STYLE_IDS (general / hybrid / custom method - never a complementary lens) lives in analysisProfileLens.js with the rest of the
+// lens rules, and is imported above by every surface that needs it.
 
 // Exported: analysisProfileRite.jsx's full-screen rite reuses this exact four-language copy block
 // (merged with its own small set of rite-only keys) rather than forking a second copy of ~150
@@ -195,58 +196,6 @@ function SectionLabel({ children }) {
   return <span style={{ fontSize: 11, letterSpacing: '.08em', textTransform: 'uppercase', color: 'var(--text-dim)' }}>{children}</span>;
 }
 
-function DnaPreview({ lang, primaryStyleId, secondaryStyleIds, focusIds, customFocuses, name }) {
-  const styles = styleRegistry(), focuses = focusRegistry();
-  const primary = styles ? styles.get(primaryStyleId) : null;
-  const secondaries = (secondaryStyleIds || []).map((id) => (styles ? styles.get(id) : null)).filter(Boolean);
-  const focusList = (focusIds || []).map((id) => (focuses ? focuses.get(id) : null)).filter(Boolean);
-
-  return (
-    <div style={{
-      display: 'flex', flexDirection: 'column', gap: 12, padding: 18, borderRadius: 12,
-      border: '1px solid var(--border-gold)', background: 'var(--surface-card)', boxShadow: 'var(--shadow-panel)'
-    }}>
-      <SectionLabel>{tr(lang, 'dnaLabel')}</SectionLabel>
-      {!primary ? (
-        <span style={{ fontSize: 12.5, color: 'var(--text-dim)' }}>{tr(lang, 'dnaEmpty')}</span>
-      ) : (
-        <React.Fragment>
-          <span style={{ fontSize: 19, fontWeight: 700, color: 'var(--parchment)' }}>{name || (primary.name[lang] || primary.name.en)}</span>
-          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 18 }}>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 5 }}>
-              <SectionLabel>{tr(lang, 'dnaPrimary')}</SectionLabel>
-              <span style={{ fontSize: 13, color: 'var(--char-accent)', fontWeight: 600 }}>{primary.name[lang] || primary.name.en}</span>
-            </div>
-            {secondaries.length > 0 && (
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 5 }}>
-                <SectionLabel>{tr(lang, 'dnaSecondary')}</SectionLabel>
-                <span style={{ fontSize: 13, color: 'var(--text-primary)' }}>{secondaries.map((s) => s.name[lang] || s.name.en).join(' + ')}</span>
-              </div>
-            )}
-          </div>
-          {(focusList.length > 0 || (customFocuses || []).length > 0) && (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 7 }}>
-              <SectionLabel>{tr(lang, 'dnaFocus')}</SectionLabel>
-              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
-                {focusList.map((f) => (
-                  <span key={f.id} style={{ fontSize: 11.5, padding: '4px 10px', borderRadius: 999, background: 'rgba(3,8,7,.4)', border: '1px solid var(--border-hairline)', color: 'var(--text-primary)' }}>
-                    {f.name[lang] || f.name.en}
-                  </span>
-                ))}
-                {(customFocuses || []).map((f) => (
-                  <span key={f.id} style={{ fontSize: 11.5, padding: '4px 10px', borderRadius: 999, background: 'rgba(3,8,7,.4)', border: '1px solid var(--char-accent)', color: 'var(--char-accent)' }}>
-                    {f.name}
-                  </span>
-                ))}
-              </div>
-            </div>
-          )}
-        </React.Fragment>
-      )}
-    </div>
-  );
-}
-
 function StepDots({ step }) {
   return (
     <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
@@ -266,13 +215,22 @@ export function AnalysisProfileOnboarding({ mode = 'first-run', existingProfile,
   const styles = styleRegistry(), focuses = focusRegistry();
 
   const seed = existingProfile || null;
+  const registries = { styles, focuses };
+  // Editing a saved profile opens on its RECONCILED lens (analysisProfileLens.js): a focus area that no longer fits the lens, or a
+  // lens duplicated in the complementary list, is not carried into the form as a hidden selection - it is taken out and named.
+  const seedLens = React.useMemo(() => (seed ? lensOfProfile(registries, seed) : null), []);
   const [step, setStep] = React.useState(1);
-  const [primaryStyleId, setPrimaryStyleId] = React.useState(seed ? seed.primaryStyleId : '');
-  const [secondaryStyleIds, setSecondaryStyleIds] = React.useState(seed ? seed.secondaryStyleIds || [] : []);
-  const [hybridMode, setHybridMode] = React.useState(Boolean(seed && (seed.secondaryStyleIds || []).length));
+  const [primaryStyleId, setPrimaryStyleId] = React.useState(seedLens ? seedLens.primaryStyleId : '');
+  const [secondaryStyleIds, setSecondaryStyleIds] = React.useState(seedLens ? seedLens.secondaryStyleIds : []);
+  const [hybridMode, setHybridMode] = React.useState(Boolean(seedLens && seedLens.secondaryStyleIds.length));
   const [showAllStyles, setShowAllStyles] = React.useState(false);
   const [customMethodNotes, setCustomMethodNotes] = React.useState(seed ? seed.customMethodNotes || '' : '');
-  const [focusIds, setFocusIds] = React.useState(seed ? seed.focusIds || [] : []);
+  const [focusIds, setFocusIds] = React.useState(seedLens ? seedLens.focusIds : []);
+  const [lensNotice, setLensNotice] = React.useState(seedLens && (seedLens.staleFocusIds.length || seedLens.removedSecondaryIds.length)
+    ? { removedFocusIds: seedLens.staleFocusIds, secondaryRemoved: seedLens.removedSecondaryIds.length > 0, mode: 'stale' } : null);
+  // The latest lens state, readable from callbacks that outlive a render (the assistant's field setters below are registered once).
+  const lensRef = React.useRef(null);
+  lensRef.current = { primaryStyleId, secondaryStyleIds, focusIds };
   const [name, setName] = React.useState(seed ? seed.name || '' : '');
   const [nameTouched, setNameTouched] = React.useState(Boolean(seed && seed.name));
   const [styleQuery, setStyleQuery] = React.useState('');
@@ -306,24 +264,27 @@ export function AnalysisProfileOnboarding({ mode = 'first-run', existingProfile,
   // analysis-style-registry.js's own header comment for the ranking rule.
   const styleSearchResults = trimmedStyleQuery && styles ? styles.search(trimmedStyleQuery) : null;
 
+  // Every lens change is ONE reconciled step (analysisProfileLens.js): the primary lens is taken out of the complementary lenses, and the
+  // focus areas that no longer fit the new lens are removed from the selection and named in a notice - never left selected behind chips
+  // that are no longer offered. Applied synchronously to lensRef too, so an assistant filling primary -> secondary -> focus in one turn
+  // sees each step's result.
+  function applyLens(change) {
+    const before = lensRef.current;
+    const next = applyLensChange(registries, before, change);
+    lensRef.current = { primaryStyleId: next.primaryStyleId, secondaryStyleIds: next.secondaryStyleIds, focusIds: next.focusIds };
+    setPrimaryStyleId(next.primaryStyleId);
+    setSecondaryStyleIds(next.secondaryStyleIds);
+    setFocusIds(next.focusIds);
+    setLensNotice({ removedFocusIds: next.removedFocusIds, secondaryRemoved: 'primaryStyleId' in change && before.secondaryStyleIds.indexOf(change.primaryStyleId) > -1, mode: 'removed' });
+  }
   function pickPrimary(id) {
-    if (id === 'hybrid') { setHybridMode(true); setPrimaryStyleId(''); setSecondaryStyleIds([]); return; }
+    if (id === 'hybrid') { setHybridMode(true); applyLens({ primaryStyleId: '', secondaryStyleIds: [] }); return; }
     setHybridMode(false);
-    setPrimaryStyleId(id);
-    setSecondaryStyleIds([]);
+    applyLens({ primaryStyleId: id, secondaryStyleIds: [] });
     if (id !== 'custom_method') setCustomMethodNotes('');
   }
-  function pickHybridPrimary(id) {
-    setPrimaryStyleId(id);
-    setSecondaryStyleIds((prev) => prev.filter((sid) => sid !== id));
-  }
-  function toggleSecondary(id) {
-    setSecondaryStyleIds((prev) => {
-      if (prev.indexOf(id) > -1) return prev.filter((sid) => sid !== id);
-      if (prev.length >= 2) return prev;
-      return prev.concat(id);
-    });
-  }
+  function pickHybridPrimary(id) { applyLens({ primaryStyleId: id }); }
+  function toggleSecondary(id) { applyLens({ secondaryStyleIds: toggleSecondaryLens(lensRef.current.secondaryStyleIds, id) }); }
   function toggleFocus(id) {
     setFocusIds((prev) => (prev.indexOf(id) > -1 ? prev.filter((fid) => fid !== id) : prev.concat(id)));
   }
@@ -383,25 +344,17 @@ export function AnalysisProfileOnboarding({ mode = 'first-run', existingProfile,
   const customNotesOk = !isCustom || customMethodNotes.trim().length >= 8;
   const step1Valid = Boolean(primaryStyleId) && customNotesOk;
 
-  const focusGroups = React.useMemo(() => {
-    if (!primaryStyleId) return { recommended: [], optional: [] };
-    if (isCustom) {
-      const all = focuses ? focuses.list() : [];
-      return { recommended: [], optional: all };
-    }
-    if (!styles) return { recommended: [], optional: [] };
-    const merged = styles.mergeFocusRecommendations(primaryStyleId, secondaryStyleIds);
-    return {
-      recommended: merged.recommended.map((id) => focuses.get(id)).filter(Boolean),
-      optional: merged.optional.map((id) => focuses.get(id)).filter(Boolean)
-    };
-  }, [primaryStyleId, secondaryStyleIds, isCustom, styles, focuses]);
+  const focusGroups = React.useMemo(
+    () => reconcileLens({ styles, focuses, primaryStyleId, secondaryStyleIds, focusIds: [] }).groups,
+    [primaryStyleId, secondaryStyleIds, styles, focuses]
+  );
 
   function buildDraft() {
     return {
       id: seed ? seed.id : undefined,
       name: name.trim() || (window.TradeJournalAnalysisProfileStore ? window.TradeJournalAnalysisProfileStore.suggestedName(primaryStyleId, focusIds, activeLang) : ''),
-      primaryStyleId, secondaryStyleIds, focusIds, customMethodNotes,
+      ...(() => { const lens = reconcileLens({ styles, focuses, primaryStyleId, secondaryStyleIds, focusIds }); return { primaryStyleId: lens.primaryStyleId, secondaryStyleIds: lens.secondaryStyleIds, focusIds: lens.focusIds }; })(),
+      customMethodNotes,
       customMethodLinks: { youtubeUrl, websiteUrl, referenceUrl }, customFocuses,
       isDefault: seed ? seed.isDefault : undefined
     };
@@ -473,11 +426,11 @@ export function AnalysisProfileOnboarding({ mode = 'first-run', existingProfile,
         if (path === 'primaryStyleId') { pickPrimary(value); return; }
         if (path === 'secondaryStyleIds') {
           setHybridMode(value.length > 0);
-          setSecondaryStyleIds(value.slice(0, 2));
+          applyLens({ secondaryStyleIds: value.slice(0, 2) });
           return;
         }
         if (path === 'customMethodNotes') { setCustomMethodNotes(String(value || '')); return; }
-        if (path === 'focusIds') { setFocusIds(value.slice()); return; }
+        if (path === 'focusIds') { applyLens({ focusIds: value.slice() }); return; }
         if (path === 'name') { setName(String(value || '')); setNameTouched(true); }
       },
       submit: () => completeRef.current()
@@ -497,6 +450,8 @@ export function AnalysisProfileOnboarding({ mode = 'first-run', existingProfile,
         <span style={{ fontSize: 11, color: 'var(--text-dim)' }}>{tr(activeLang, 'step', { n: step })}</span>
         <StepDots step={step} />
       </div>
+
+      {lensNotice && <LensNotice lang={activeLang} removedFocusIds={lensNotice.removedFocusIds} secondaryRemoved={lensNotice.secondaryRemoved} mode={lensNotice.mode} />}
 
       {step === 1 && (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
@@ -619,7 +574,7 @@ export function AnalysisProfileOnboarding({ mode = 'first-run', existingProfile,
             </React.Fragment>
           ) : (
             <React.Fragment>
-              <button type="button" onClick={() => { setHybridMode(false); setPrimaryStyleId(''); setSecondaryStyleIds([]); }} style={{
+              <button type="button" onClick={() => { setHybridMode(false); applyLens({ primaryStyleId: '', secondaryStyleIds: [] }); }} style={{
                 alignSelf: 'flex-start', background: 'transparent', border: 0, cursor: 'pointer', padding: 0,
                 display: 'flex', alignItems: 'center', gap: 6, fontSize: 12.5, color: 'var(--text-muted)', font: 'inherit'
               }}>
@@ -748,7 +703,7 @@ export function AnalysisProfileOnboarding({ mode = 'first-run', existingProfile,
             />
           </div>
 
-          <DnaPreview lang={activeLang} primaryStyleId={primaryStyleId} secondaryStyleIds={secondaryStyleIds} focusIds={focusIds} customFocuses={customFocuses} name={name} />
+          <AnalysisDna lang={activeLang} showName profile={{ name, primaryStyleId, secondaryStyleIds, focusIds, customFocuses }} />
         </div>
       )}
     </div>

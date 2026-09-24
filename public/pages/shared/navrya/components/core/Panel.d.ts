@@ -14,6 +14,8 @@ export interface PanelProps extends React.HTMLAttributes<HTMLElement> {
   /** Add the soft accent glow. */
   glow?: boolean;
   padding?: number | string;
+  /** Stretch the content wrapper to the frame's height (equal-height grid cards whose footer sits at the bottom). */
+  fill?: boolean;
   as?: keyof JSX.IntrinsicElements;
   children?: React.ReactNode;
 }

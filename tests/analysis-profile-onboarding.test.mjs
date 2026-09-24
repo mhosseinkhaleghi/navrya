@@ -42,13 +42,20 @@ test('Step 2 asks the real headline question from the brief, in Persian and Engl
 });
 
 test('Step 1 supports General / Open Analysis, Hybrid, and Custom Method as always-visible special options', async () => {
+  // The three special ids now live with the rest of the lens rules (analysisProfileLens.js); the wizard imports them, it does not copy them.
+  const lens = await source('analysisProfileLens.js');
+  assert.match(lens, /SPECIAL_STYLE_IDS = \['general_analysis', 'hybrid', 'custom_method'\]/);
   const text = await source('analysisProfileOnboarding.jsx');
-  assert.match(text, /SPECIAL_STYLE_IDS = \['general_analysis', 'hybrid', 'custom_method'\]/);
+  assert.match(text, /import \{ SPECIAL_STYLE_IDS, [^}]*\} from '\.\/analysisProfileLens\.js';/);
+  assert.doesNotMatch(text, /SPECIAL_STYLE_IDS = \[/, 'no second copy of the list');
 });
 
 test('choosing Hybrid reveals a primary-lens picker plus up to two secondary lenses, never more', async () => {
+  const lens = await source('analysisProfileLens.js');
+  assert.match(lens, /MAX_SECONDARY_LENSES = 2/, 'secondary styles must be capped at 2');
+  assert.match(lens, /if \(list\.length >= MAX_SECONDARY_LENSES\) return list;/);
   const text = await source('analysisProfileOnboarding.jsx');
-  assert.match(text, /if \(prev\.length >= 2\) return prev;/, 'secondary styles must be capped at 2');
+  assert.match(text, /toggleSecondaryLens\(lensRef\.current\.secondaryStyleIds, id\)/, 'the wizard toggles a complementary lens through the shared rule');
 });
 
 test('Custom Method requires a short note before the wizard can advance past Step 1', async () => {
@@ -59,14 +66,16 @@ test('Custom Method requires a short note before the wizard can advance past Ste
 
 test('Step 2 focus recommendations come from the Style/Focus Registries via mergeFocusRecommendations(), never a hardcoded per-style list inside the onboarding component', async () => {
   const text = await source('analysisProfileOnboarding.jsx');
-  assert.match(text, /styles\.mergeFocusRecommendations\(primaryStyleId, secondaryStyleIds\)/);
+  assert.match(text, /reconcileLens\(\{ styles, focuses, primaryStyleId, secondaryStyleIds, focusIds: \[\] \}\)\.groups/);
+  assert.match(await source('analysisProfileLens.js'), /styles\.mergeFocusRecommendations\(primaryStyleId, secondaryStyleIds\)/, 'the offered focus areas are the registry own recommendations');
   assert.doesNotMatch(text, /recommendedFocusIds:\s*\[/, 'no style-specific focus list should be hardcoded inside the onboarding UI itself');
 });
 
 test('a live Analysis DNA preview is rendered from the real selected style/focus, not static placeholder text', async () => {
   const text = await source('analysisProfileOnboarding.jsx');
-  assert.match(text, /function DnaPreview\(/);
-  assert.match(text, /<DnaPreview lang={activeLang} primaryStyleId={primaryStyleId} secondaryStyleIds={secondaryStyleIds} focusIds={focusIds} customFocuses={customFocuses} name={name} \/>/);
+  // The preview is the shared AnalysisDna (analysisProfileDna.jsx) - the same component the profile detail renders - fed the wizard's live selection.
+  assert.doesNotMatch(text, /function DnaPreview\(/);
+  assert.match(text, /<AnalysisDna lang=\{activeLang\} showName profile=\{\{ name, primaryStyleId, secondaryStyleIds, focusIds, customFocuses \}\} \/>/);
 });
 
 test('a default profile name is auto-suggested from the real store, and never overwrites a name the user already typed', async () => {

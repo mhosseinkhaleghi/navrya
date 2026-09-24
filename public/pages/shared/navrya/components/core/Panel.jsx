@@ -64,7 +64,7 @@ function Ornament({ v, h, size, inset, color }) {
 /* Ornamented frame used by every NAVRYA module. Ornament defines hierarchy — never decorative noise. */
 export function Panel({
   variant = 'base', radius = 12, ornament = false, ornamentSize = 12, ornamentInset = 4,
-  texture = false, textureOpacity = 0.06, glow = false, padding, as: Tag = 'div',
+  texture = false, textureOpacity = 0.06, glow = false, padding, fill = false, as: Tag = 'div',
   style, children, ...rest
 }) {
   const frame = FRAMES[variant] || FRAMES.base;
@@ -89,7 +89,8 @@ export function Panel({
       {ornament && CORNERS.map(([v, h]) => (
         <Ornament key={v + h} v={v} h={h} size={ornamentSize} inset={ornamentInset} color={ornColor} />
       ))}
-      <div style={{ position: 'relative', ...layoutStyle }}>{children}</div>
+      {/* `fill` (additive, default false): the content wrapper takes the frame's height, so a flex/grid child can push its footer to the bottom of an equal-height grid card. */}
+      <div style={{ position: 'relative', ...(fill ? { height: '100%' } : null), ...layoutStyle }}>{children}</div>
     </Tag>
   );
 }

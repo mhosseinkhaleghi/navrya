@@ -43,5 +43,6 @@ test('SetupTab reuses the exact same store.helpers validators the wizard uses - 
 test('SetupTab computes focus recommendations via the real registry (mergeFocusRecommendations), never a hardcoded per-style list', async () => {
   const text = await source();
   const fn = text.slice(text.indexOf('function SetupTab('), text.indexOf('function ProfileDetail('));
-  assert.match(fn, /styles\.mergeFocusRecommendations\(primaryStyleId, secondaryStyleIds\)/);
+  assert.match(fn, /reconcileLens\(\{ styles, focuses, primaryStyleId, secondaryStyleIds, focusIds \}\)\.groups/);
+  assert.match(await readFile(path.join(process.cwd(), 'navrya-src', 'analysisProfileLens.js'), 'utf8'), /styles\.mergeFocusRecommendations\(primaryStyleId, secondaryStyleIds\)/, 'and the registry is what it asks');
 });
