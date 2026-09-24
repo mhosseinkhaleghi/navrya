@@ -2,8 +2,10 @@ import React from 'react';
 import { Panel } from '../public/pages/shared/navrya/components/core/Panel.jsx';
 import { Icon } from '../public/pages/shared/navrya/components/core/Icon.jsx';
 import { Button } from '../public/pages/shared/navrya/components/forms/Button.jsx';
+import { Chip } from '../public/pages/shared/navrya/components/forms/Chip.jsx';
 import { EngineLearningPanel } from './engineLearning.jsx';
 import { classifyAiError, aiErrorText } from './analysisProfileAiErrors.js';
+import { SOURCE_STATES, formatSourceSize, safeHttpUrl, sourceCardState, sourceHostname, sourceSteps, summarizeSourceStates } from './analysisProfileKnowledgeCards.js';
 import { trt, trDigits, trDate } from './analysisProfileTrainingCopy.js';
 
 // The Analysis Profile "Knowledge" tab (ARCHITECTURE.md §7.25): the website / YouTube / PDF material a
@@ -16,6 +18,8 @@ import { trt, trDigits, trDate } from './analysisProfileTrainingCopy.js';
 //               apply flow as a typed note (EngineLearningPanel with a `preset`). This is the only
 //               step that spends AI tokens, and only on an explicit click.
 // Sources are loaded lazily, only when this tab opens (never part of the boot-time replica hydrate).
+// Each source is a card (SourceCard): its kind, status, host or file, digest and Add -> Read -> Teach progress - see
+// analysisProfileKnowledgeCards.js for the pure rules behind them.
 
 const MAX_PDF_MB = 15;
 const MAX_PDF_BYTES = MAX_PDF_MB * 1024 * 1024;
@@ -66,9 +70,50 @@ function readFileAsDataUrl(file) {
 // bytes, so the declared type is normalised here rather than trusted from the picker.
 const asPdfDataUrl = (dataUrl) => dataUrl.replace(/^data:[^,]*,/, 'data:application/pdf;base64,');
 
-function StatusBadge({ lang, source }) {
-  const tone = source.status === 'failed' ? 'var(--danger)' : source.status === 'taught' ? 'var(--success)' : source.status === 'ready' ? 'var(--char-accent)' : 'var(--text-dim)';
-  return <span style={{ fontSize: 10.5, padding: '2px 8px', borderRadius: 999, border: '1px solid currentColor', color: tone }}>{trt(lang, STATUS_LABEL[source.status] || 'sourceStatusQueued')}</span>;
+// Each kind of source has its own colour and icon so a card is recognisable at a glance; the status has its own (semantic) colour,
+// so the two are never confused. Colour is never the only signal: every state is also written out.
+const KIND_TONE = { youtube: 'var(--char-accent)', website: 'var(--info)', pdf: 'var(--gold-warm)' };
+const STATE_TONE = { queued: 'var(--text-dim)', ready: 'var(--char-accent)', taught: 'var(--success)', failed: 'var(--danger)', missing: 'var(--danger)' };
+const STATE_LABEL = { ...STATUS_LABEL, missing: 'srcStatusMissing' };
+const CHIP_TONE = { queued: 'neutral', ready: 'accent', taught: 'success', failed: 'danger', missing: 'danger' };
+const STEP_LABEL = { added: 'srcStepAdded', read: 'srcStepRead', stored: 'srcStepStored', taught: 'srcStepTaught' };
+const STEP_STATE_LABEL = { done: 'srcStateDone', current: 'srcStateCurrent', todo: 'srcStateTodo', failed: 'srcStateFailed' };
+const STEP_TONE = { done: 'var(--success)', current: 'var(--char-accent)', todo: 'var(--text-disabled)', failed: 'var(--danger)' };
+
+function StatusBadge({ lang, state }) {
+  return <span data-source-status={state} style={{ fontSize: 10.5, padding: '2px 8px', borderRadius: 999, border: '1px solid currentColor', color: STATE_TONE[state], whiteSpace: 'nowrap', flex: 'none' }}>{trt(lang, STATE_LABEL[state])}</span>;
+}
+
+function StepMark({ state }) {
+  if (state === 'done') return <span style={{ color: STEP_TONE.done, display: 'grid', placeItems: 'center' }}><Icon name="check" size={13} /></span>;
+  if (state === 'failed') return <span style={{ color: STEP_TONE.failed, display: 'grid', placeItems: 'center' }}><Icon name="close" size={13} /></span>;
+  return (
+    <span aria-hidden="true" style={{ width: 11, height: 11, margin: 1, borderRadius: '50%', boxSizing: 'border-box', display: 'grid', placeItems: 'center', border: '1.5px solid ' + STEP_TONE[state] }}>
+      {state === 'current' && <span style={{ width: 4, height: 4, borderRadius: '50%', background: STEP_TONE.current, display: 'block' }}></span>}
+    </span>
+  );
+}
+
+// Add -> Read (or Stored, for a PDF) -> Taught. The connectors are decoration; each step names its state in text for assistive tech.
+function ProgressSteps({ lang, source }) {
+  const steps = sourceSteps(source);
+  return (
+    <ol aria-label={trt(lang, 'srcStepsLabel')} data-source-steps="true" style={{ margin: 0, padding: 0, listStyle: 'none', display: 'flex', alignItems: 'center', gap: 6 }}>
+      {steps.map((step, i) => {
+        const label = trt(lang, STEP_LABEL[step.key]);
+        const stateText = trt(lang, STEP_STATE_LABEL[step.state]);
+        return (
+          <React.Fragment key={step.key}>
+            {i > 0 && <li role="presentation" aria-hidden="true" style={{ flex: 1, height: 1, minWidth: 8, background: steps[i - 1].state === 'done' ? STEP_TONE.done : 'var(--border-hairline)' }}></li>}
+            <li data-step={step.key} data-step-state={step.state} aria-label={label + ': ' + stateText} title={label + ': ' + stateText}
+              style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: 10.5, color: STEP_TONE[step.state], whiteSpace: 'nowrap' }}>
+              <StepMark state={step.state} />{label}
+            </li>
+          </React.Fragment>
+        );
+      })}
+    </ol>
+  );
 }
 
 const fieldStyle = {
@@ -76,66 +121,106 @@ const fieldStyle = {
   background: 'rgba(3,8,7,.55)', color: 'var(--text-primary)', font: 'inherit', fontSize: 13, outline: 'none'
 };
 
-function SourceRow({ lang, source, busy, transcript, onTranscript, onSaveTranscript, onRead, onTeach, onDelete, teaching }) {
+// One source as a card. Everything on it is text from the source record rendered as text (never HTML); the host is only printed, and
+// no icon or preview image is ever requested from it. A PDF's file is not fetched here either - only on an explicit "Teach".
+export function SourceCard({ lang, source, busy, transcript, onTranscript, onSaveTranscript, onRead, onTeach, onDelete, teaching }) {
   const isPdf = source.kind === 'pdf';
+  const state = sourceCardState(source);
+  const tone = KIND_TONE[source.kind] || KIND_TONE.website;
   const hasContent = isPdf ? source.fileAvailable !== false : Boolean(source.digest);
   const needsTranscript = source.kind === 'youtube' && source.status !== 'queued' && source.status !== 'failed' && !source.digest;
   const canRead = !isPdf && !busy;
-  const heading = source.title || source.fileName || source.url;
+  const host = isPdf ? null : sourceHostname(source.url);
+  const link = isPdf ? null : safeHttpUrl(source.url);
+  const heading = source.title || source.fileName || host || source.url;
+  const size = isPdf ? formatSourceSize(source.fileSizeBytes) : null;
+  const dated = source.status === 'taught' && source.taughtAt ? trt(lang, 'srcTaughtOn', { date: trDate(lang, source.taughtAt) }) : source.createdAt ? trt(lang, 'srcAddedOn', { date: trDate(lang, source.createdAt) }) : null;
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 10, padding: '14px 0', borderBottom: '1px solid var(--border-hairline)' }}>
-      <div style={{ display: 'flex', alignItems: 'flex-start', gap: 12 }}>
-        <span style={{ flex: 'none', width: 32, height: 32, borderRadius: 8, display: 'grid', placeItems: 'center', color: 'var(--char-accent)', border: '1px solid var(--border-hairline)', background: 'rgba(3,8,7,.5)' }}>
-          <Icon name={KIND_ICON[source.kind] || 'link'} size={16} />
-        </span>
-        <span style={{ display: 'flex', flexDirection: 'column', gap: 5, minWidth: 0, flex: 1 }}>
-          <span style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
-            <span dir="auto" style={{ fontSize: 13, fontWeight: 600, color: 'var(--text-primary)', overflowWrap: 'anywhere' }}>{heading}</span>
-            <span style={{ fontSize: 10.5, padding: '2px 8px', borderRadius: 999, border: '1px solid var(--border-hairline)', color: 'var(--text-dim)' }}>{trt(lang, KIND_LABEL[source.kind] || 'sourceKindWebsite')}</span>
-            <StatusBadge lang={lang} source={source} />
-            {source.status === 'taught' && source.taughtUnderstandingVersion != null && (
-              <span style={{ fontSize: 10.5, color: 'var(--text-dim)' }}>{trt(lang, 'understandingVersion', { n: trDigits(lang, source.taughtUnderstandingVersion) })}</span>
-            )}
-          </span>
-          {!isPdf && source.url && (
-            <a href={source.url} target="_blank" rel="noopener noreferrer" dir="ltr" title={trt(lang, 'openLink')}
-              style={{ fontSize: 11, color: 'var(--text-dim)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', textDecoration: 'none' }}>{source.url}</a>
+    <li style={{ listStyle: 'none', display: 'flex', minWidth: 0 }}>
+      <Panel variant={teaching ? 'active' : 'base'} padding="16px 18px" fill style={{ flex: 1, minWidth: 0 }}
+        data-source-card="true" data-source-kind={source.kind} data-source-state={state} data-teaching={teaching ? 'true' : undefined}>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 12, height: '100%' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+            <span aria-hidden="true" style={{ flex: 'none', width: 44, height: 44, borderRadius: 11, display: 'grid', placeItems: 'center', color: tone,
+              border: '1px solid color-mix(in srgb, ' + tone + ' 45%, transparent)', background: 'color-mix(in srgb, ' + tone + ' 13%, transparent)' }}>
+              <Icon name={KIND_ICON[source.kind] || 'link'} size={22} />
+            </span>
+            <span style={{ display: 'flex', flexDirection: 'column', gap: 3, minWidth: 0, flex: 1 }}>
+              <span style={{ fontSize: 10.5, fontWeight: 700, letterSpacing: '.08em', textTransform: 'uppercase', color: tone }}>{trt(lang, KIND_LABEL[source.kind] || 'sourceKindWebsite')}</span>
+              {host && <span style={{ fontSize: 11.5, color: 'var(--text-muted)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}><bdi dir="ltr" data-source-host="true">{host}</bdi></span>}
+              {isPdf && (size || source.createdAt) && (
+                <span style={{ fontSize: 11.5, color: 'var(--text-muted)' }}>
+                  {[size ? trDigits(lang, size.value) + ' ' + size.unit : null, source.createdAt ? trDate(lang, source.createdAt) : null].filter(Boolean).join(' · ')}
+                </span>
+              )}
+            </span>
+            <StatusBadge lang={lang} state={state} />
+          </div>
+
+          <span dir="auto" style={{ fontSize: 14, fontWeight: 600, lineHeight: 1.6, color: 'var(--text-primary)', overflowWrap: 'anywhere', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>{heading}</span>
+
+          {link && (
+            <a href={link} target="_blank" rel="noopener noreferrer nofollow" dir="ltr" title={trt(lang, 'openLink')}
+              style={{ fontSize: 11, color: 'var(--text-dim)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', textDecoration: 'none' }}>{link}</a>
           )}
-          {isPdf && source.fileSizeBytes != null && (
-            <span style={{ fontSize: 11, color: 'var(--text-dim)' }}>{trDigits(lang, (source.fileSizeBytes / (1024 * 1024)).toFixed(2))} MB · {trDate(lang, source.createdAt)}</span>
-          )}
-          {source.status === 'failed' && <span style={{ fontSize: 11.5, color: 'var(--danger)' }}>{errorText(lang, source.errorCode)}</span>}
-          {isPdf && source.fileAvailable === false && <span style={{ fontSize: 11.5, color: 'var(--danger)' }}>{trt(lang, 'fileRemoved')}</span>}
+          {!isPdf && !link && source.url && <span dir="ltr" style={{ fontSize: 11, color: 'var(--text-dim)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{source.url}</span>}
+
           {!isPdf && source.digest && (
             <span style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
               <span style={{ fontSize: 10, letterSpacing: '.06em', textTransform: 'uppercase', color: 'var(--text-dim)' }}>{trt(lang, 'digestLabel')}</span>
               <span dir="auto" style={{ fontSize: 12, lineHeight: 1.8, color: 'var(--text-muted)', display: '-webkit-box', WebkitLineClamp: 3, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>{source.digest}</span>
             </span>
           )}
-        </span>
-      </div>
+          {!isPdf && !source.digest && source.status !== 'failed' && <span style={{ fontSize: 11.5, color: 'var(--text-dim)' }}>{trt(lang, 'srcNotReadYet')}</span>}
+          {isPdf && source.fileAvailable !== false && <span style={{ fontSize: 11.5, color: 'var(--text-dim)' }}>{trt(lang, 'srcPdfPrivate')}</span>}
+          {source.status === 'failed' && <span role="alert" style={{ fontSize: 11.5, color: 'var(--danger)' }}>{errorText(lang, source.errorCode)}</span>}
+          {isPdf && source.fileAvailable === false && <span style={{ fontSize: 11.5, color: 'var(--danger)' }}>{trt(lang, 'fileRemoved')}</span>}
 
-      {needsTranscript && (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 7, padding: '10px 12px', borderRadius: 10, border: '1px solid var(--divider-gold)', background: 'rgba(183,138,74,.06)' }}>
-          <span style={{ fontSize: 12, fontWeight: 600, color: 'var(--gold-warm)' }}>{trt(lang, 'noTranscriptTitle')}</span>
-          <span style={{ fontSize: 11.5, color: 'var(--text-muted)', lineHeight: 1.8 }}>{trt(lang, 'noTranscriptBody')}</span>
-          <textarea value={transcript || ''} onChange={(e) => onTranscript(e.target.value)} rows={4} dir="auto" maxLength={8000}
-            placeholder={trt(lang, 'transcriptPlaceholder')} style={{ ...fieldStyle, resize: 'vertical', lineHeight: 1.8, width: '100%' }} />
-          <span><Button variant="secondary" size="sm" icon="check" disabled={!String(transcript || '').trim() || Boolean(busy)} onClick={onSaveTranscript}>{trt(lang, 'saveTranscriptBtn')}</Button></span>
+          {needsTranscript && (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 7, padding: '10px 12px', borderRadius: 10, border: '1px solid var(--divider-gold)', background: 'rgba(183,138,74,.06)' }}>
+              <span style={{ fontSize: 12, fontWeight: 600, color: 'var(--gold-warm)' }}>{trt(lang, 'noTranscriptTitle')}</span>
+              <span style={{ fontSize: 11.5, color: 'var(--text-muted)', lineHeight: 1.8 }}>{trt(lang, 'noTranscriptBody')}</span>
+              <textarea value={transcript || ''} onChange={(e) => onTranscript(e.target.value)} rows={4} dir="auto" maxLength={8000}
+                placeholder={trt(lang, 'transcriptPlaceholder')} style={{ ...fieldStyle, resize: 'vertical', lineHeight: 1.8, width: '100%' }} />
+              <span><Button variant="secondary" size="sm" icon="check" disabled={!String(transcript || '').trim() || Boolean(busy)} onClick={onSaveTranscript}>{trt(lang, 'saveTranscriptBtn')}</Button></span>
+            </div>
+          )}
+
+          <div data-source-footer="true" style={{ display: 'flex', flexDirection: 'column', gap: 10, marginBlockStart: 'auto', paddingBlockStart: 12, borderBlockStart: '1px solid var(--border-hairline)' }}>
+            <ProgressSteps lang={lang} source={source} />
+            {(dated || (source.status === 'taught' && source.taughtUnderstandingVersion != null) || teaching) && (
+              <span style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: '2px 10px', fontSize: 10.5, color: 'var(--text-dim)' }}>
+                {dated && <span>{dated}</span>}
+                {source.status === 'taught' && source.taughtUnderstandingVersion != null && <span>{trt(lang, 'understandingVersion', { n: trDigits(lang, source.taughtUnderstandingVersion) })}</span>}
+                {teaching && <span data-teaching-note="true" style={{ color: 'var(--char-accent)' }}>{trt(lang, 'srcTeachingNow')}</span>}
+              </span>
+            )}
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+              {(source.status === 'ready' || source.status === 'taught') && hasContent && (
+                <Button variant="primary" size="sm" icon="sparkle" disabled={Boolean(busy) || teaching} onClick={onTeach}>{trt(lang, 'teachFromSourceBtn')}</Button>
+              )}
+              {!isPdf && (
+                <Button variant="ghost" size="sm" icon="refresh-cw" loading={busy === 'reading'} disabled={!canRead} onClick={onRead}>
+                  {busy === 'reading' ? trt(lang, 'reading') : trt(lang, source.status === 'queued' || source.status === 'failed' ? 'readBtn' : 'rereadBtn')}
+                </Button>
+              )}
+              <Button variant="ghost" size="sm" icon="trash" disabled={Boolean(busy)} onClick={onDelete}>{trt(lang, 'deleteSource')}</Button>
+            </div>
+          </div>
         </div>
-      )}
+      </Panel>
+    </li>
+  );
+}
 
-      <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', paddingInlineStart: 44 }}>
-        {(source.status === 'ready' || source.status === 'taught') && hasContent && (
-          <Button variant="primary" size="sm" icon="sparkle" disabled={Boolean(busy) || teaching} onClick={onTeach}>{trt(lang, 'teachFromSourceBtn')}</Button>
-        )}
-        {!isPdf && (
-          <Button variant="ghost" size="sm" icon="refresh-cw" loading={busy === 'reading'} disabled={!canRead} onClick={onRead}>
-            {busy === 'reading' ? trt(lang, 'reading') : trt(lang, source.status === 'queued' || source.status === 'failed' ? 'readBtn' : 'rereadBtn')}
-          </Button>
-        )}
-        <Button variant="ghost" size="sm" icon="trash" disabled={Boolean(busy)} onClick={onDelete}>{trt(lang, 'deleteSource')}</Button>
-      </div>
+// How many sources are in each state, next to the total. States nobody is in are simply not listed.
+export function SourceSummary({ lang, sources }) {
+  const counts = summarizeSourceStates(sources);
+  return (
+    <div role="group" aria-label={trt(lang, 'srcSummaryLabel')} data-source-summary="true" style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+      {SOURCE_STATES.filter((state) => counts[state] > 0).map((state) => (
+        <Chip key={state} tone={CHIP_TONE[state]} data-summary-state={state}>{trt(lang, STATE_LABEL[state])} {trDigits(lang, counts[state])}</Chip>
+      ))}
     </div>
   );
 }
@@ -297,31 +382,38 @@ export function KnowledgeTab({ profile, lang, queued }) {
           onTaught={(version) => onTaught(teaching, version)} />
       )}
 
-      <Panel padding="18px 20px">
-        <div style={{ display: 'flex', flexDirection: 'column' }}>
-          <div style={{ display: 'flex', alignItems: 'baseline', gap: 12, paddingBottom: 4 }}>
-            <span style={{ fontSize: 14, fontWeight: 600, color: 'var(--parchment)' }}>{trt(lang, 'sourcesCount', { n: trDigits(lang, sources.length) })}</span>
-          </div>
-          {phase === 'loading' && <span style={{ fontSize: 12, color: 'var(--text-dim)', padding: '12px 0' }}>{trt(lang, 'reading')}</span>}
-          {phase === 'error' && (
-            <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '12px 0', flexWrap: 'wrap' }}>
+      <section aria-label={trt(lang, 'sourcesCount', { n: trDigits(lang, sources.length) })} data-sources-section="true" style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap' }}>
+          <span style={{ fontSize: 14, fontWeight: 600, color: 'var(--parchment)' }}>{trt(lang, 'sourcesCount', { n: trDigits(lang, sources.length) })}</span>
+          {phase === 'ready' && sources.length > 0 && <SourceSummary lang={lang} sources={sources} />}
+        </div>
+        {phase === 'loading' && <Panel padding="14px 18px"><span style={{ fontSize: 12, color: 'var(--text-dim)' }}>{trt(lang, 'reading')}</span></Panel>}
+        {phase === 'error' && (
+          <Panel padding="14px 18px">
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
               <span style={{ fontSize: 12, color: 'var(--danger)' }}>{trt(lang, 'sourcesLoadFailed')}</span>
               <Button variant="ghost" size="sm" icon="refresh-cw" onClick={load}>{trt(lang, 'retryBtn')}</Button>
             </div>
-          )}
-          {phase === 'ready' && sources.length === 0 && (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 4, padding: '14px 0' }}>
+          </Panel>
+        )}
+        {phase === 'ready' && sources.length === 0 && (
+          <Panel padding="18px 20px">
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
               <span style={{ fontSize: 13, fontWeight: 600, color: 'var(--text-primary)' }}>{trt(lang, 'sourcesEmpty')}</span>
               <span style={{ fontSize: 12, color: 'var(--text-dim)' }}>{trt(lang, 'sourcesEmptyBody')}</span>
             </div>
-          )}
-          {sources.map((source) => (
-            <SourceRow key={source.id} lang={lang} source={source} busy={busy[source.id]} teaching={teachingId === source.id}
-              transcript={transcripts[source.id]} onTranscript={(value) => setTranscripts((prev) => ({ ...prev, [source.id]: value }))}
-              onSaveTranscript={() => saveTranscript(source)} onRead={() => readOne(source)} onTeach={() => setTeachingId(source.id)} onDelete={() => removeOne(source)} />
-          ))}
-        </div>
-      </Panel>
+          </Panel>
+        )}
+        {sources.length > 0 && (
+          <ul data-source-grid="true" style={{ margin: 0, padding: 0, display: 'grid', gridTemplateColumns: 'repeat(auto-fill,minmax(min(100%,320px),1fr))', gap: 14, alignItems: 'stretch' }}>
+            {sources.map((source) => (
+              <SourceCard key={source.id} lang={lang} source={source} busy={busy[source.id]} teaching={teachingId === source.id}
+                transcript={transcripts[source.id]} onTranscript={(value) => setTranscripts((prev) => ({ ...prev, [source.id]: value }))}
+                onSaveTranscript={() => saveTranscript(source)} onRead={() => readOne(source)} onTeach={() => setTeachingId(source.id)} onDelete={() => removeOne(source)} />
+            ))}
+          </ul>
+        )}
+      </section>
     </div>
   );
 }
