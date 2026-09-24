@@ -3,6 +3,7 @@ import { Panel } from '../public/pages/shared/navrya/components/core/Panel.jsx';
 import { Icon } from '../public/pages/shared/navrya/components/core/Icon.jsx';
 import { Button } from '../public/pages/shared/navrya/components/forms/Button.jsx';
 import { EngineLearningPanel } from './engineLearning.jsx';
+import { MemoryGraphPanel, MemoryGraphWorkspace } from './analysisProfileBrain.jsx';
 import { trt, trDigits, trDate } from './analysisProfileTrainingCopy.js';
 
 // The Analysis Profile "Memory" tab (ARCHITECTURE.md §7.25): what the engine currently understands
@@ -55,12 +56,15 @@ function EventRow({ event, lang }) {
   );
 }
 
-export function MemoryTab({ profile, lang }) {
+export function MemoryTab({ profile, lang, onManageConcepts }) {
   const profiles = store();
   const [events, setEvents] = React.useState([]);
   const [loaded, setLoaded] = React.useState(false);
   const [editing, setEditing] = React.useState(false);
   const [draft, setDraft] = React.useState('');
+  // The 3D workspace is a separate surface, opened deliberately - never mounted with the tab, so
+  // the WebGL context and the vendored engine only ever exist once the trader asks for them.
+  const [graphOpen, setGraphOpen] = React.useState(false);
   const aliveRef = React.useRef(true);
   React.useEffect(() => { aliveRef.current = true; return () => { aliveRef.current = false; }; }, []);
 
@@ -103,7 +107,14 @@ export function MemoryTab({ profile, lang }) {
     <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
       <p style={{ margin: 0, fontSize: 12.5, lineHeight: 1.9, color: 'var(--text-muted)', maxWidth: 760 }}>{trt(lang, 'memorySubtitle')}</p>
 
-      <Panel padding="18px 20px">
+      {/* The band: the memory graph in two of five columns, what the engine understands in the
+          other three. Both stack below 1120px - see navrya/memory-graph.css. */}
+      <div className="nv-memory-band">
+        <div className="nv-memory-graph">
+          <MemoryGraphPanel profile={profile} lang={lang} onOpen={() => setGraphOpen(true)} />
+        </div>
+        <div className="nv-memory-understanding">
+      <Panel padding="18px 20px" style={{ height: '100%' }}>
         <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
             <span style={{ fontSize: 14, fontWeight: 600, color: 'var(--parchment)' }}>{trt(lang, 'understandingTitle')}</span>
@@ -129,6 +140,8 @@ export function MemoryTab({ profile, lang }) {
           )}
         </div>
       </Panel>
+        </div>
+      </div>
 
       <EngineLearningPanel lang={lang} profile={profile} onChanged={reload} />
 
@@ -148,6 +161,16 @@ export function MemoryTab({ profile, lang }) {
           {events.map((event) => <EventRow key={event.id} event={event} lang={lang} />)}
         </div>
       </Panel>
+
+      {graphOpen && (
+        <MemoryGraphWorkspace
+          profile={profile} lang={lang}
+          onClose={() => setGraphOpen(false)}
+          // Editing a concept belongs to the Concepts tab and its existing applyLearning()/update()
+          // paths; the graph never grows a second form for the same records.
+          onManageConcepts={() => { if (onManageConcepts) onManageConcepts(); }}
+        />
+      )}
     </div>
   );
 }

@@ -1,0 +1,259 @@
+/* Analysis Profile › Memory › Memory Graph (ARCHITECTURE.md §7.25).
+
+   The Memory tab's top band is one five-column grid: the memory graph takes two of the five
+   columns, the "what the engine understands" panel takes the remaining three. Everything below the
+   band (teach the engine, learning history) stays full width, unchanged.
+
+   This lives here rather than in inline styles because the band genuinely needs a breakpoint, and
+   navrya-src/*.jsx carries no stylesheet of its own - the same reason profile-card.css exists.
+   Imported by navrya/styles.css, so no character page had to change. */
+
+.nv-memory-band {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 16px;
+  align-items: stretch;
+}
+
+.nv-memory-band > .nv-memory-graph { grid-column: span 2; }
+.nv-memory-band > .nv-memory-understanding { grid-column: span 3; }
+
+/* Narrow tablets and phones: both areas stack and the graph becomes full width. Two of five
+   columns is ~300px once the sidebar and page padding are taken out at this width, which is below
+   what the graph can be read in. 1120px is the shell's own existing "narrow" breakpoint
+   (responsive.css), reused rather than invented. */
+@media (max-width: 1120px) {
+  .nv-memory-band { grid-template-columns: minmax(0, 1fr); }
+  .nv-memory-band > .nv-memory-graph,
+  .nv-memory-band > .nv-memory-understanding { grid-column: span 1; }
+}
+
+/* ==========================================================================================
+   Full-screen graph workspace - the reference graph app's own chrome (github.com/richardholliday/
+   graph-app, live at driftforge.cloud): a blurred toolbar with pill controls, a legend in the
+   inline-start corner, a centred stats pill, and a detail panel that slides in from the inline-end
+   edge (a bottom sheet on phones). Its surface tokens are scoped here, not added to the design
+   system: they belong to this one workspace. The character accent still marks every active control.
+
+   It is a fixed overlay with an explicit inset, not a flex child of Modal's auto-height body -
+   an inner `flex: 1` there has no definite height to fill and collapses the canvas to nothing.
+   ========================================================================================== */
+
+html.nv-gx-open, html.nv-gx-open body { overflow: hidden; }
+
+.nv-gx {
+  --gx-bg: #0f1117;
+  --gx-surface: rgba(20, 22, 30, .92);
+  --gx-border: #2a2d3a;
+  --gx-text: #e0e0e0;
+  --gx-dim: rgba(224, 224, 224, .55);
+  --gx-faint: rgba(224, 224, 224, .25);
+  --gx-pill: 20px;
+  --slide: 100%;
+  position: fixed; inset: 0; z-index: 100;
+  display: flex; flex-direction: column;
+  /* keep the workspace above the always-on-top ChatDock, exactly as Modal reserves it */
+  padding-block-end: var(--navrya-chat-dock-reserved, 0px);
+  background: var(--gx-bg); color: var(--gx-text);
+  font-family: var(--font-ui, Vazirmatn, Tahoma, Arial, sans-serif);
+  overscroll-behavior: contain;
+}
+.nv-gx[dir="rtl"] { --slide: -100%; }
+
+.nv-gx button, .nv-gx input { font-family: inherit; }
+.nv-gx button:focus-visible,
+.nv-gx input:focus-visible,
+.nv-gx-search:focus-within { outline: none; box-shadow: 0 0 0 2px var(--char-accent); }
+
+/* ---- toolbar ---- */
+.nv-gx-toolbar {
+  flex: none; z-index: 6;
+  display: flex; flex-direction: column; gap: 6px;
+  padding: 8px 14px;
+  background: var(--gx-surface);
+  border-block-end: 1px solid var(--gx-border);
+  -webkit-backdrop-filter: blur(8px); backdrop-filter: blur(8px);
+}
+.nv-gx-top { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.nv-gx-title { font-size: 16px; font-weight: 700; color: #fff; white-space: nowrap; }
+.nv-gx-subtitle { font-size: 11px; color: var(--gx-dim); }
+.nv-gx-profile { color: var(--gx-text); font-weight: 600; }
+.nv-gx-close {
+  margin-inline-start: auto;
+  display: inline-flex; align-items: center; gap: 6px;
+  min-height: 28px; padding: 4px 12px;
+  border: 1px solid var(--gx-border); border-radius: var(--gx-pill);
+  background: rgba(255, 255, 255, .06); color: var(--gx-dim);
+  font-size: 11px; cursor: pointer; white-space: nowrap;
+  transition: background .15s, color .15s;
+}
+.nv-gx-close:hover { background: rgba(255, 255, 255, .1); color: var(--gx-text); }
+
+.nv-gx-controls { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+
+.nv-gx-search {
+  position: relative; flex: 0 0 220px;
+  display: flex; align-items: center; gap: 6px;
+  padding-inline: 10px;
+  background: rgba(255, 255, 255, .06); border: 1px solid var(--gx-border); border-radius: var(--gx-pill);
+}
+.nv-gx-search-icon { color: var(--gx-dim); display: inline-flex; }
+.nv-gx-search input {
+  flex: 1; min-width: 0; padding-block: 6px;
+  background: none; border: 0; outline: none; color: var(--gx-text); font-size: 13px;
+}
+.nv-gx-search input::placeholder { color: var(--gx-dim); }
+.nv-gx-search-clear { background: none; border: 0; padding: 0; color: var(--gx-dim); font-size: 16px; line-height: 1; cursor: pointer; }
+.nv-gx-results {
+  position: absolute; inset-inline: 0; inset-block-start: calc(100% + 6px); z-index: 20;
+  display: flex; flex-direction: column; gap: 2px; padding: 6px; max-height: 320px; overflow-y: auto;
+  background: var(--gx-surface); border: 1px solid var(--gx-border); border-radius: 10px;
+  box-shadow: 0 12px 30px rgba(0, 0, 0, .45);
+}
+.nv-gx-results-empty { padding: 8px; font-size: 12px; color: var(--gx-dim); }
+
+.nv-gx-result {
+  display: flex; align-items: center; gap: 8px; width: 100%; padding: 7px 9px;
+  border: 1px solid transparent; border-radius: 7px; background: none; color: var(--gx-text);
+  font-size: 12px; text-align: start; cursor: pointer;
+}
+.nv-gx-result:hover, .nv-gx-result[aria-current="true"] { background: rgba(255, 255, 255, .07); }
+.nv-gx-result-text { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.nv-gx-result-kind { flex: none; font-size: 10.5px; color: var(--gx-dim); }
+
+.nv-gx-filters, .nv-gx-toggles { display: flex; gap: 6px; flex-wrap: wrap; }
+.nv-gx-toggles { margin-inline-start: auto; }
+
+.nv-gx-filter {
+  min-height: 28px; padding: 4px 10px;
+  border: 1.5px solid var(--pill); border-radius: var(--gx-pill);
+  background: transparent; color: var(--pill);
+  font-size: 11px; font-weight: 600; cursor: pointer;
+  transition: background .15s, opacity .15s;
+}
+.nv-gx-filter:hover { background: rgba(255, 255, 255, .08); }
+.nv-gx-filter.is-on { background: var(--pill); color: var(--gx-bg); }
+
+.nv-gx-toggle {
+  min-height: 28px; padding: 4px 10px; white-space: nowrap;
+  border: 1px solid var(--gx-border); border-radius: var(--gx-pill);
+  background: rgba(255, 255, 255, .06); color: var(--gx-dim);
+  font-size: 11px; cursor: pointer; transition: background .15s, color .15s;
+}
+.nv-gx-toggle:hover { background: rgba(255, 255, 255, .1); color: var(--gx-text); }
+.nv-gx-toggle.is-on {
+  background: color-mix(in srgb, var(--char-accent) 20%, transparent);
+  color: var(--char-accent);
+  border-color: color-mix(in srgb, var(--char-accent) 40%, transparent);
+}
+
+/* ---- canvas + overlays ---- */
+.nv-gx-body { position: relative; flex: 1; min-height: 0; overflow: hidden; }
+.nv-gx-canvas { position: absolute; inset: 0; }
+.nv-gx-canvas canvas { display: block; }
+.nv-gx-labels { position: absolute; inset: 0; overflow: hidden; pointer-events: none; z-index: 1; }
+.nv-gx-label {
+  position: absolute; inset-block-start: 0; inset-inline-start: 0;
+  font-size: 11px; line-height: 1.4; font-weight: 500; color: #cccccc; white-space: nowrap;
+  text-shadow: 0 1px 3px rgba(0, 0, 0, .85); will-change: transform, opacity;
+}
+.nv-gx-label.is-selected { color: var(--char-accent); font-weight: 700; }
+.nv-gx-label.is-off { display: none; }
+
+.nv-gx-tooltip {
+  position: absolute; left: 0; top: 0; z-index: 8; max-width: 280px;
+  padding: 10px 13px; font-size: 13px; line-height: 1.6;
+  background: var(--gx-surface); border: 1px solid var(--gx-border); border-radius: 8px;
+  pointer-events: none; opacity: 0; transition: opacity .12s;
+}
+.nv-gx-tooltip.visible { opacity: 1; }
+.nv-gx-tooltip-label { font-size: 14px; font-weight: 600; margin-block-end: 3px; }
+.nv-gx-tooltip-kind { font-size: 10px; letter-spacing: .05em; opacity: .55; margin-block-end: 5px; }
+.nv-gx-tooltip-desc { font-size: 12px; opacity: .8; }
+
+.nv-gx-stats {
+  position: absolute; inset-block-end: 16px; inset-inline-start: 50%; z-index: 4;
+  translate: -50% 0; pointer-events: none;
+  padding: 5px 14px; font-size: 12px; font-variant-numeric: tabular-nums; opacity: .7;
+  background: var(--gx-surface); border: 1px solid var(--gx-border); border-radius: var(--gx-pill);
+}
+.nv-gx[dir="rtl"] .nv-gx-stats { translate: 50% 0; }
+
+.nv-gx-legend {
+  position: absolute; inset-block-end: 16px; inset-inline-start: 16px; z-index: 4;
+  min-width: 170px; padding: 12px 14px; font-size: 12px;
+  background: var(--gx-surface); border: 1px solid var(--gx-border); border-radius: 10px;
+}
+.nv-gx-legend h3, .nv-gx-section h3 { margin: 0 0 8px; font-size: 11px; font-weight: 600; letter-spacing: .08em; opacity: .45; }
+.nv-gx-legend-row { display: flex; align-items: center; gap: 8px; margin-block-end: 5px; }
+.nv-gx-legend-row:last-child { margin-block-end: 0; }
+.nv-gx-legend-row.is-note { font-size: 11px; opacity: .6; }
+.nv-gx-legend-split { margin-block-start: 10px; padding-block-start: 10px; border-block-start: 1px solid var(--gx-border); }
+.nv-gx-dot { width: 10px; height: 10px; border-radius: 50%; flex: none; display: inline-block; }
+.nv-gx-line { width: 18px; height: 3px; border-radius: 2px; flex: none; display: inline-block; }
+
+.nv-gx-overlay {
+  position: absolute; inset: 0; z-index: 3; display: grid; place-items: center; padding: 24px;
+  background: var(--gx-bg); text-align: center;
+}
+.nv-gx-overlay-card { display: flex; flex-direction: column; align-items: center; gap: 12px; max-width: 460px; max-height: 100%; }
+.nv-gx-overlay-title { font-size: 13px; font-weight: 600; color: var(--gx-text); }
+.nv-gx-overlay-body { font-size: 12px; line-height: 1.95; color: var(--gx-dim); }
+.nv-gx-nodelist { display: flex; flex-direction: column; gap: 2px; width: 100%; max-height: 46vh; overflow-y: auto; text-align: start; }
+.nv-gx-spinner {
+  width: 26px; height: 26px; border-radius: 50%;
+  border: 2px solid var(--gx-border); border-block-start-color: var(--char-accent);
+  animation: nv-gx-spin 1s linear infinite;
+}
+@keyframes nv-gx-spin { to { transform: rotate(360deg); } }
+
+/* ---- detail panel ---- */
+.nv-gx-panel {
+  position: absolute; inset-block: 0; inset-inline-end: 0; z-index: 5;
+  width: 320px; max-width: 100%; display: flex; flex-direction: column;
+  background: var(--gx-surface); border-inline-start: 1px solid var(--gx-border);
+  -webkit-backdrop-filter: blur(8px); backdrop-filter: blur(8px);
+  transform: translateX(var(--slide)); visibility: hidden;
+  transition: transform .25s ease, visibility 0s linear .25s;
+}
+.nv-gx-panel.open { transform: none; visibility: visible; transition: transform .25s ease, visibility 0s; }
+.nv-gx-panel-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 10px; padding: 16px 16px 12px; border-block-end: 1px solid var(--gx-border); }
+.nv-gx-panel-label { font-size: 18px; font-weight: 700; line-height: 1.35; }
+.nv-gx-panel-type { font-size: 11px; letter-spacing: .08em; margin-block-start: 4px; opacity: .55; }
+.nv-gx-panel-close { flex: none; padding: 0; border: 0; background: none; color: var(--gx-dim); font-size: 20px; line-height: 1; cursor: pointer; }
+.nv-gx-panel-close:hover { color: var(--gx-text); }
+.nv-gx-panel-body { flex: 1; overflow-y: auto; padding: 14px 16px; }
+.nv-gx-meta { display: flex; flex-wrap: wrap; gap: 6px; margin-block-end: 14px; }
+.nv-gx-desc { margin: 0 0 14px; font-size: 13px; line-height: 1.85; opacity: .85; white-space: pre-wrap; }
+.nv-gx-conn { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; padding: 9px 0; border-block-end: 1px solid rgba(255, 255, 255, .05); }
+.nv-gx-conn:last-child { border-block-end: 0; }
+.nv-gx-conn-verb { font-size: 11px; font-style: italic; color: #7dd3fc; white-space: nowrap; }
+.nv-gx-conn-node {
+  display: inline-flex; align-items: center; gap: 5px; padding: 2px 4px; border: 0; border-radius: 4px;
+  background: none; color: inherit; font-size: 13px; font-weight: 500; cursor: pointer; transition: background .15s;
+}
+.nv-gx-conn-node:hover { background: rgba(255, 255, 255, .08); color: #fff; }
+.nv-gx-panel-foot { padding: 12px 16px; border-block-start: 1px solid var(--gx-border); }
+
+/* ---- phones: the graph app's own mobile behaviour ---- */
+@media (max-width: 760px) {
+  .nv-gx-toolbar { padding: 8px 12px; }
+  .nv-gx-controls { flex-wrap: nowrap; overflow-x: auto; scrollbar-width: none; padding-block-end: 2px; }
+  .nv-gx-controls::-webkit-scrollbar { display: none; }
+  .nv-gx-search { flex: 0 0 150px; }
+  .nv-gx-filters, .nv-gx-toggles { flex-wrap: nowrap; flex: none; margin-inline-start: 0; }
+  .nv-gx-filter, .nv-gx-toggle { min-height: 38px; white-space: nowrap; }
+  .nv-gx-legend, .nv-gx-tooltip { display: none; }
+  .nv-gx-stats { inset-block-end: 10px; font-size: 11px; padding: 4px 12px; }
+  .nv-gx-panel {
+    inset-block: auto 0; inset-inline: 0; width: auto; height: 62%;
+    border-inline-start: 0; border-block-start: 1px solid var(--gx-border); border-radius: 14px 14px 0 0;
+    transform: translateY(100%);
+  }
+  .nv-gx-panel.open { transform: none; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .nv-gx-panel, .nv-gx-panel.open { transition: none; }
+  .nv-gx-spinner { animation: none; }
+}

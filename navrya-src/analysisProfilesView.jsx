@@ -452,7 +452,7 @@ function ProfileDetail({ profile, lang, dtab, setDtab, queuedLinks, onBack, onEd
       {dtab === 'setup' && <SetupTab key={profile.id} profile={profile} lang={lang} onUpdate={(patch) => onUpdateProfile(patch)} />}
       {dtab === 'concepts' && <ConceptsTab key={profile.id} profile={profile} lang={lang} />}
       {dtab === 'knowledge' && <KnowledgeTab key={profile.id} profile={profile} lang={lang} queued={queuedLinks} />}
-      {dtab === 'memory' && <MemoryTab key={profile.id} profile={profile} lang={lang} />}
+      {dtab === 'memory' && <MemoryTab key={profile.id} profile={profile} lang={lang} onManageConcepts={() => setDtab('concepts')} />}
       {dtab === 'chat' && <AnalysisProfileChatTab key={profile.id} profile={profile} lang={lang} />}
       {dtab === 'preview' && <PreviewTab key={profile.id} profile={profile} lang={lang} />}
 

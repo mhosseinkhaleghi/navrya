@@ -25,7 +25,7 @@ const root = process.cwd();
 const FILES = [
   'analysisProfileOnboarding.jsx', 'analysisProfileRite.jsx', 'analysisProfilesView.jsx', 'analysisProfileConcepts.jsx',
   'analysisProfileMemory.jsx', 'analysisProfileKnowledge.jsx', 'analysisProfileChat.jsx',
-  'analysisProfilePreview.jsx', 'analysisProfileReport.jsx', 'engineLearning.jsx', 'reportCharts.jsx'
+  'analysisProfilePreview.jsx', 'analysisProfileReport.jsx', 'analysisProfileBrain.jsx', 'engineLearning.jsx', 'reportCharts.jsx'
 ];
 
 const KNOWN_GLOBALS = new Set([
