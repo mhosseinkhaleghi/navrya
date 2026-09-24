@@ -1142,9 +1142,15 @@ function StrategyDetailsTab({ lang, strategy, onSave, onAiSteps, onGoChat }) {
   // Also intentionally never added to the AI-fillable allowlist a few lines above - linking a
   // Strategy to an Analysis Profile is a real user decision, not an AI-suggestable field, matching
   // the brief's own "no Strategy is implicitly selected" rule stated for the reverse direction.
+  // The hub's onSave(updated) re-saves WHATEVER record it is handed (it is the single Details-tab save
+  // funnel), so it must be handed the record this call just saved. Handing it strategyRef.current - the
+  // pre-change snapshot, still carrying the OLD linkedAnalysisProfileId - made that second save silently
+  // overwrite the new link (or the cleared null) with the previous value. Save once, keep the record the
+  // store returns, and pass that on; `null` stays the "no profile" value end to end.
   function setLinkedProfile(id) {
-    window.TradeJournalStrategyEducationStore.save(Object.assign({}, strategyRef.current, { linkedAnalysisProfileId: id || null }));
-    onSave(strategyRef.current); setSavedAt(Date.now());
+    const saved = window.TradeJournalStrategyEducationStore.save(Object.assign({}, strategyRef.current, { linkedAnalysisProfileId: id || null }));
+    strategyRef.current = saved;
+    onSave(saved); setSavedAt(Date.now());
   }
   const analysisProfileOptions = [{ value: '', label: tr(lang, 'analysisProfileNone') }].concat(
     (window.TradeJournalAnalysisProfileStore ? window.TradeJournalAnalysisProfileStore.listSync() : [])
