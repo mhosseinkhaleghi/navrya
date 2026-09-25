@@ -772,6 +772,19 @@
     // fresh intent.
     if (workflowEngine && typeof workflowEngine.pruneIfAbandoned === 'function') workflowEngine.pruneIfAbandoned();
     var currentWorkflow = workflowEngine ? workflowEngine.current() : null;
+    // Found via a real user report ("go to the accounts section" answered with "I cannot move", for
+    // every later navigation too): a navigate.to whose page could not be resolved (the model named
+    // it in a form the alias table did not know) never submits - it just waits for domainId, and
+    // its own 'navigate-to' registration (open exactly while that workflow is current) made every
+    // later turn an "open form" turn with no availableActions at all. A navigation is never a form
+    // the user is filling: one still waiting when a new message arrives is dropped here, so this
+    // turn gets a fresh action discovery (which re-offers navigate.to). One already submitting is
+    // left alone.
+    if (currentWorkflow && currentWorkflow.actionId === 'navigate.to' && currentWorkflow.status !== 'pending-submit' && currentWorkflow.status !== 'submitting') {
+      if (typeof workflowEngine.cancel === 'function') workflowEngine.cancel();
+      currentWorkflow = null;
+    }
+    if (activeProcess && activeProcess.id === 'navigate-to') activeProcess = null;
     // Journey F, F27-31: several real processes are passive "this entity/conversation happens to
     // be visible" signals - open for as long as some unrelated, ordinary page state says so
     // (a Pattern/Strategy tab showing, a comment thread expanded, a message thread open, an

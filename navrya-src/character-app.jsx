@@ -27,6 +27,7 @@ import { openWeeklyCheckIn } from './weeklyCheckInModal.jsx';
 import { renderPatternRegistry } from './patternRegistryView.jsx';
 import { renderStrategyEducation } from './strategyEducationView.jsx';
 import { renderChatDock } from './chatDockView.jsx';
+import { normalizeNavigateDomainId } from './navigateDomain.js';
 import { renderAccountProfile } from './accountProfileView.jsx';
 import { openIntake, INTAKE_ENUM_OPTIONS, SCENARIOS } from './mentalHealthIntakeModal.jsx';
 import { AnalysisProfileRite } from './analysisProfileRite.jsx';
@@ -938,22 +939,9 @@ export function mountCharacterApp(character) {
       support: () => store.setActiveId('support'),
       account: () => { location.hash = '#account/profile'; }
     };
-    var NAVIGATE_ALIASES = {
-      home: 'dashboard', main: 'dashboard',
-      session: 'sessions', trading: 'sessions',
-      'prop-firm': 'accounts', propfirm: 'accounts', wallet: 'accounts',
-      strategy: 'strategies', pattern: 'patterns',
-      setting: 'settings', preferences: 'settings',
-      mindset: 'psychology', mental: 'psychology',
-      assistant: 'ai-assistant', aisettings: 'ai-assistant', ai: 'ai-assistant',
-      profile: 'account', subscription: 'account', subscriptions: 'account',
-      ticket: 'support', tickets: 'support', helpdesk: 'support', help: 'support'
-    };
-    function normalizeNavigateDomainId(raw) {
-      var key = String(raw || '').trim().toLowerCase().replace(/\s+/g, '');
-      if (NAVIGATE_TARGETS[key]) return key;
-      return NAVIGATE_ALIASES[key] || null;
-    }
+    // The page a domainId names - in any of the four UI languages, with or without "the ... page"
+    // style filler - is resolved by navigateDomain.js (the one alias table; see its own comment for
+    // the real "I cannot move" report an English-only table caused).
     if (window.TradeJournalAIProcessRegistry) {
       window.TradeJournalAIProcessRegistry.register('navigate-to', {
         allowlist: ['domainId'],
