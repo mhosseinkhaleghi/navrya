@@ -18,22 +18,35 @@ test('ChatResponsePopover accepts feedback/feedbackLabels/five onFeedback* handl
   assert.match(popoverSrc, /onFeedbackCorrect, onFeedbackWrongAction, onFeedbackWrongTarget, onFeedbackRemember, onFeedbackDismiss/);
 });
 
+// ChatDock capsule redesign: the feedback choices now share one quiet row with copy/regenerate.
+// The gating condition lives in one named constant (showFeedback), the block runs from there to the
+// copy button, and all five handlers are still wired - the two "wrong" intents as items of one small
+// menu (WrongFeedbackMenu) instead of two more equal-weight pills.
+function feedbackBlock() {
+  const start = popoverSrc.indexOf('{showFeedback && (');
+  const end = popoverSrc.indexOf('<CopyButton iconOnly', start);
+  assert.ok(start > -1 && end > start, 'could not find the real feedback-row render block');
+  return popoverSrc.slice(start, end);
+}
+
 test('the feedback row only renders for the LAST assistant message and only when `feedback` is truthy - never speculatively, never for a user message, never mid-thinking/safety/review', () => {
-  const match = /\{!thinking && !safety && !review && effectiveMessages && lastMessage && lastMessage\.role === 'assistant' && feedback && \([\s\S]*?\)\}/.exec(popoverSrc);
-  assert.ok(match, 'could not find the real feedback-row render block');
-  const block = match[0];
+  assert.match(popoverSrc, /const showFeedback = !thinking && !safety && !review && effectiveMessages && lastMessage && lastMessage\.role === 'assistant' && feedback;/);
+  const block = feedbackBlock();
   assert.match(block, /onFeedbackCorrect && <MiniButton/);
   assert.match(block, /onFeedbackRemember && <MiniButton/);
-  assert.match(block, /onFeedbackWrongAction && <MiniButton/);
-  assert.match(block, /onFeedbackWrongTarget && <MiniButton/);
+  assert.match(block, /onFeedbackWrongAction && <MiniButton[^>]*onClick=\{\(\) => \{ setWrongMenuOpen\(false\); onFeedbackWrongAction\(\); \}\}/);
+  assert.match(block, /onFeedbackWrongTarget && <MiniButton[^>]*onClick=\{\(\) => \{ setWrongMenuOpen\(false\); onFeedbackWrongTarget\(\); \}\}/);
   assert.match(block, /onFeedbackDismiss && <MiniButton/);
 });
 
 test('the feedback row reuses the existing MiniButton/ActionRow components - no new design system', () => {
-  const match = /\{!thinking && !safety && !review && effectiveMessages && lastMessage && lastMessage\.role === 'assistant' && feedback && \([\s\S]*?\)\}/.exec(popoverSrc);
-  const block = match[0];
+  const block = feedbackBlock();
   assert.match(block, /<ActionRow>/);
+  assert.match(block, /<WrongFeedbackMenu/);
   assert.doesNotMatch(block, /className="navrya-feedback|new-design/i);
+  // The menu itself is built from the same MiniButton, not a second button style.
+  const menu = popoverSrc.slice(popoverSrc.indexOf('function WrongFeedbackMenu'), popoverSrc.indexOf('export function ChatResponsePopover'));
+  assert.match(menu, /<MiniButton iconOnly icon="thumbs-down"/);
 });
 
 test('chatDockView.jsx tracks answered receipts per conversation (respondedReceiptIdsRef), resetting it on both New Chat and resume - the same isolation boundary every other per-conversation transient state in this file already uses', () => {

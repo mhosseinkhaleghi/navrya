@@ -158,9 +158,14 @@ test('the dock row and the response surface both carry stable data selectors for
   assert.match(chatDockSrc, /data-navrya-assistant="response-surface"/);
 });
 
+// ChatDock capsule redesign: at the bottom the order is exactly as before (reply 70, below modals;
+// row 150, above them). The only 150 reply is the beside-the-modal lane, which dockSideLane.js only
+// ever returns when the lane measurably clears the dialog's rect - so the reply still never covers a
+// dialog's own fields (tests/chatdock-capsule.test.mjs covers that geometry).
 test('z-index separation is preserved exactly as before - the response surface stays at its existing lower layer (70), the dock row stays above modals (150); this fix only changes horizontal positioning, never the stacking order', () => {
-  assert.match(chatDockSrc, /zIndex: 70, pointerEvents: 'none'/);
-  assert.match(chatDockSrc, /zIndex: 150,/);
+  assert.match(chatDockSrc, /zIndex: inLane \? 150 : 70, pointerEvents: 'none'/);
+  assert.match(chatDockSrc, /\.\.\.dockPlacement, zIndex: 150,/);
+  assert.match(chatDockSrc, /const inLane = !!sideLane;/);
 });
 
 // NAVRYA chat dock redesign: the gap was deliberately shrunk from the original 12px, first to a
@@ -170,9 +175,17 @@ test('z-index separation is preserved exactly as before - the response surface s
 // modal-collision fix this same file documents - never merged into one) read as one connected,
 // level panel, matching the design's own continuous-panel look. The row itself still starts at
 // bottom:24, unchanged.
+// ChatDock capsule redesign: the reply panel now meets the row flush (JOINED_GAP_PX = 0, with the
+// panel's bottom and the row's top corners squared) - the last step of the same "one connected
+// panel" goal. The 2px gap still applies to the unjoined surfaces (history dropdown, companion
+// card). The row still starts at bottom:24 (DOCK_BOTTOM_PX) outside the side lane.
 test('the response surface sits a small, deliberate PANEL_TO_DOCK_GAP_PX above the dock row (bottom: 24 + rowHeight + PANEL_TO_DOCK_GAP_PX, where the row itself starts at bottom:24), not the old 12px gap', () => {
   assert.match(chatDockSrc, /var PANEL_TO_DOCK_GAP_PX = 2;/);
-  assert.match(chatDockSrc, /bottom: 24 \+ rowHeight \+ PANEL_TO_DOCK_GAP_PX, boxSizing: 'border-box'/);
+  assert.match(chatDockSrc, /var JOINED_GAP_PX = 0;/);
+  assert.match(chatDockSrc, /var DOCK_BOTTOM_PX = 24;/);
+  assert.match(chatDockSrc, /const surfaceGap = surfaceJoined \? JOINED_GAP_PX : PANEL_TO_DOCK_GAP_PX;/);
+  assert.match(chatDockSrc, /const dockBottom = inLane \? sideLane\.bottom : DOCK_BOTTOM_PX;/);
+  assert.match(chatDockSrc, /bottom: dockBottom \+ rowHeight \+ surfaceGap, boxSizing: 'border-box'/);
 });
 
 test('the response body is now its own bounded, scrollable region covering EVERY section (lines/meta/suggestions/review), not only the messages thread - a header stays outside this wrapper and therefore always reachable', () => {

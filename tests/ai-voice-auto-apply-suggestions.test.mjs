@@ -20,12 +20,18 @@ test('a voice-originated turn with an open process auto-applies every extracted 
   assert.match(dockViewSrc, /if \(autoApplyVoiceSuggestions\) \{\s*\r?\n\s*rawSuggestions\.forEach\(\(s\) => \{ try \{ core\.applySuggestion\(result\.activeProcess\.id, s\.path, s\.value, s\.mode\); \} catch \(_\) \{\} \}\);/);
 });
 
+// ChatDock capsule redesign: each raw suggestion now also carries the field's real rendered label
+// (receipts.fieldLabel), placed BEFORE the spread so the suggestion's own data always wins - the
+// popover still gets every raw, un-applied suggestion.
 test('a text-originated turn is completely unaffected - the popover still receives the raw, un-applied suggestions array for manual Apply/Discard exactly as before', () => {
-  assert.match(dockViewSrc, /suggestions: autoApplyVoiceSuggestions \? \[\] : rawSuggestions\.map\(\(s, i\) => \(\{ id: s\.id \|\| 'sugg-' \+ i, \.\.\.s \}\)\),/);
+  assert.match(dockViewSrc, /suggestions: autoApplyVoiceSuggestions \? \[\] : rawSuggestions\.map\(\(s, i\) => \(\{ id: s\.id \|\| 'sugg-' \+ i, label: receipts\.fieldLabel\(activeProcessId, s\.path\), \.\.\.s \}\)\),/);
 });
 
+// ChatDock capsule redesign: still one receipt per auto-applied suggestion, now worded by
+// chatDockReceipts.js (the field's real label, never an internal path when a label exists) - and
+// never filtered out, so an applied field is never hidden.
 test('a voice turn\'s auto-applied fields are still shown to the user - as plain meta chips, the same convention an AI-discovered workflow\'s own already-applied fields already use - never hidden/silent', () => {
-  assert.match(dockViewSrc, /\.concat\(autoApplyVoiceSuggestions \? rawSuggestions\.map\(\(s\) => `\$\{s\.path\}: \$\{s\.value\}`\) : \[\]\),/);
+  assert.match(dockViewSrc, /\.concat\(autoApplyVoiceSuggestions \? rawSuggestions\.map\(\(s\) => receiptEntry\(activeProcessId, s\.path, s\.value, receipts\)\) : \[\]\),/);
 });
 
 test('auto-apply requires a real open process (result.activeProcess) - a voice turn with suggestions but no target process still falls back to the manual review path rather than guessing where to apply them', () => {

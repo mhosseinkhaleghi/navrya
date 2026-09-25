@@ -79,7 +79,13 @@ test('a configuration or Live connection error is never mislabeled as microphone
   const consolePath = path.join(root, 'public', 'pages', 'shared', 'navrya', 'components', 'assistant', 'VoiceConsole.jsx');
   return Promise.all([readFile(chatDock, 'utf8'), readFile(consolePath, 'utf8')]).then(([chatDockSource, consoleSource]) => {
     assert.match(chatDockSource, /voicePermissionDenied \? voiceLabels\.captionDenied : \(voiceErrorLabel \|\| voiceLabels\.error\)/);
-    assert.match(consoleSource, /denied \? 'MIC DENIED' : \(PHASE_CODE\[voiceState\] \|\| ''\)/);
+    // ChatDock capsule redesign: the console header no longer prints a 'MIC DENIED' / phase code at
+    // all. The guarantee is kept where it now lives: "denied" is only ever the explicit
+    // permission-denied error, any other error is its own state, and each gets its own card copy.
+    assert.doesNotMatch(consoleSource, /'MIC DENIED'/);
+    assert.match(consoleSource, /const denied = voiceState === 'error' && voicePermissionDenied;/);
+    assert.match(consoleSource, /const errored = voiceState === 'error' && !voicePermissionDenied;/);
+    assert.match(consoleSource, /\{errored && <DeniedCard strings=\{\{ deniedTitle: strings\.errorLabel, deniedBody: strings\.errorLabel/);
     assert.match(adapter, /error\.code \|\| \(error\.name && error\.name !== 'Error'/);
   });
 });
