@@ -2024,6 +2024,22 @@ Each feature i18n module exposes a `window` API with `t()`, current language, di
     rules (state, steps, host, size, `safeHttpUrl`). Text is only ever rendered as text, only http(s) links are
     clickable, the host is printed without fetching anything from it (no favicon / preview), and a PDF is downloaded
     only on an explicit Teach.
+  - **Background teaching (teaching jobs):** the billed ingest call and its answer no longer live in
+    `EngineLearningPanel`'s React state (switching tab unmounted it and the request was lost). They are a JOB in
+    `navrya-src/analysisProfileTeachJobs.js` - a framework-free, module-level map keyed by profile + `source:<id>` /
+    `note` / `correction:<title>` - so a job keeps running, and keeps its proposal, while the trader is on another tab or
+    the profile list. Phases: `working` -> `review` -> (applied | discarded), or `failed` (stable `{code,status}` kept, Retry
+    re-sends the same request). The approval boundary is unchanged: a job only PROPOSES; the profile changes only through
+    `applyTeachJob()` (one `applyLearning()` call) from an explicit click, tokens are recorded when the call returns and
+    never again on apply, and a proposal made against an older understanding is flagged stale before it can overwrite a
+    newer one. Starting a running key returns the running job (no double billing). While one runs, a `beforeunload` guard
+    warns before a reload; switching character (which tears the page down) still stops it. The trader sees it through
+    `analysisProfileTeachActivity.jsx`: the Knowledge card itself learns (animated orb + sweeping line + the real elapsed
+    time - deliberately not a progress bar), then shows "awaiting your approval" with Review and apply (which scrolls the
+    review into view); `TeachActivityBar` follows them through every tab of the profile; a toast announces the finish.
+    The animation stops under `prefers-reduced-motion` (`teach-activity.css`). A source's steps read as actions until done
+    ("Teach the engine", never "Taught" before it happened), and the old "teaching from this source" label - shown
+    whenever the panel was merely open - is gone. The Memory tab's "awaiting review" count comes from this store.
 - **Explicit future-AI boundary, stated here at full strength per the brief's own instruction:**
   **AI analysis freedom/strictness is intentionally NOT part of Analysis Profile. It is selected
   per AI analysis generation request**, at the moment a user presses "Generate AI Analysis" inside
