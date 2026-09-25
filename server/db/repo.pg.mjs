@@ -3495,6 +3495,19 @@ export function createPgRepo(pool) {
       );
       return rows.map(mapWalletLedgerEntry);
     },
+    // What the wallet REALLY lost to AI, per (provider, model): the settled ledger movement (cash + promo), never
+    // the provider cost and never a usage-event figure. The customer-facing AI usage DTO
+    // (server/commercial/customer-billing-dto.mjs) is built on this so a customer can only ever see a number that
+    // equals their own wallet history. Mirrors repo.memory.mjs.
+    async aiDebitsByModelForUser(userId, { since } = {}) {
+      const params = [userId];
+      let text = `SELECT provider, model, COUNT(*) AS settlements, SUM(-(cash_delta_micro_usd + promo_delta_micro_usd)) AS debit
+                  FROM wallet_ledger WHERE user_id=$1 AND type='AI_SETTLEMENT'`;
+      if (since) { params.push(since); text += ` AND created_at >= $${params.length}`; }
+      text += ' GROUP BY provider, model';
+      const { rows } = await pool.query(text, params);
+      return rows.map((row) => ({ provider: row.provider, model: row.model, settlements: Number(row.settlements || 0), walletDebitMicroUsd: Number(row.debit || 0) }));
+    },
     async recentLedger({ limit } = {}) {
       const { rows } = await pool.query('SELECT * FROM wallet_ledger ORDER BY created_at DESC LIMIT $1', [limit || 100]);
       return rows.map(mapWalletLedgerEntry);
@@ -3702,35 +3715,6 @@ export function createPgRepo(pool) {
       } finally {
         client.release();
       }
-    }
-  };
-
-  // The "Active Analysis Symbols" entitlement primitive (030_analysis_symbols.sql) - see that
-  // migration's comment for why this is a new table rather than a retrofit of an existing
-  // feature. No dedupe-by-symbol constraint (unlike instrumentCatalog's per-user unique code) -
-  // this is intentionally minimal since nothing in the product yet reads/writes it.
-  function mapAnalysisSymbol(row) { return { id: row.id, userId: row.user_id, symbol: row.symbol, createdAt: row.created_at }; }
-  const analysisSymbols = {
-    async upsert(userId, record) {
-      if (!record || !record.id || !record.symbol) throw new ApiError(400, 'VALIDATION_FAILED');
-      const { rows: ownerRows } = await pool.query('SELECT user_id FROM user_analysis_symbols WHERE id=$1', [record.id]);
-      if (ownerRows[0] && ownerRows[0].user_id !== userId) throw new ApiError(403, 'NOT_ANALYSIS_SYMBOL_OWNER');
-      const { rows } = await pool.query(
-        `INSERT INTO user_analysis_symbols (id, user_id, symbol) VALUES ($1,$2,$3)
-         ON CONFLICT (id) DO UPDATE SET symbol=$3 RETURNING *`,
-        [record.id, userId, String(record.symbol).trim().toUpperCase()]
-      );
-      return mapAnalysisSymbol(rows[0]);
-    },
-    async listByUser(userId) {
-      const { rows } = await pool.query('SELECT * FROM user_analysis_symbols WHERE user_id=$1 ORDER BY created_at ASC', [userId]);
-      return rows.map(mapAnalysisSymbol);
-    },
-    async remove(userId, id) {
-      const { rows } = await pool.query('SELECT user_id FROM user_analysis_symbols WHERE id=$1', [id]);
-      if (!rows[0]) return;
-      if (rows[0].user_id !== userId) throw new ApiError(403, 'NOT_ANALYSIS_SYMBOL_OWNER');
-      await pool.query('DELETE FROM user_analysis_symbols WHERE id=$1', [id]);
     }
   };
 
@@ -4203,15 +4187,28 @@ export function createPgRepo(pool) {
     // idempotent no-op success (checked first, before the conditional UPDATE, which only ever
     // fires when tx_hash IS NULL) - required for a legitimate retry (e.g. "insufficient
     // confirmations, check again later" with the same tx hash) to ever succeed later.
+    //
+    // The comparison is case-insensitive (a transaction hash is the same transaction in any letter case) and a UNIQUE
+    // violation from a concurrent claim is answered, never thrown: the plain UPDATE below raises 23505 when another
+    // invoice already holds the hash, which used to surface as a 500 COMMUNITY_API_FAILED instead of
+    // TX_HASH_ALREADY_CLAIMED. The unique index itself is case-sensitive (hashes are stored lower-cased since the
+    // service normalizes them), so the lower() lookup is what also catches a legacy mixed-case row.
     async claimTxHash(id, txHash) {
+      const wanted = String(txHash).toLowerCase();
       const current = await pool.query('SELECT * FROM crypto_invoices WHERE id=$1', [id]);
-      if (current.rows[0] && current.rows[0].tx_hash === txHash) return { ok: true, invoice: mapCryptoInvoice(current.rows[0]) };
-      const { rows } = await pool.query('UPDATE crypto_invoices SET tx_hash=$2 WHERE id=$1 AND tx_hash IS NULL RETURNING *', [id, txHash]);
-      if (rows[0]) return { ok: true, invoice: mapCryptoInvoice(rows[0]) };
-      // Either this invoice already has a different hash claimed, or the hash belongs to another
-      // invoice (UNIQUE violation) - both are "not claimed by this call", never thrown as a 500.
-      const existing = await pool.query('SELECT * FROM crypto_invoices WHERE tx_hash=$1', [txHash]).catch(() => ({ rows: [] }));
-      return { ok: false, claimedByOtherInvoice: existing.rows.length > 0 && existing.rows[0].id !== id };
+      const ownHash = current.rows[0] && current.rows[0].tx_hash;
+      if (ownHash && ownHash.toLowerCase() === wanted) return { ok: true, invoice: mapCryptoInvoice(current.rows[0]) };
+      const taken = await pool.query('SELECT id FROM crypto_invoices WHERE lower(tx_hash)=$1 AND id<>$2 LIMIT 1', [wanted, id]);
+      if (taken.rows.length) return { ok: false, claimedByOtherInvoice: true };
+      try {
+        const { rows } = await pool.query('UPDATE crypto_invoices SET tx_hash=$2 WHERE id=$1 AND tx_hash IS NULL RETURNING *', [id, wanted]);
+        if (rows[0]) return { ok: true, invoice: mapCryptoInvoice(rows[0]) };
+      } catch (error) {
+        if (error && error.code === '23505') return { ok: false, claimedByOtherInvoice: true };
+        throw error;
+      }
+      // This invoice already has a different hash claimed.
+      return { ok: false, claimedByOtherInvoice: false };
     },
     async updateStatus(id, status, { confirmationCount, confirmedAt, mismatchCreditedMicroUsd } = {}) {
       const { rows } = await pool.query(
@@ -5420,7 +5417,7 @@ export function createPgRepo(pool) {
     xpEvents, achievements, xpConfig, sessionAiAnalysisCompletions, disciplineSettings, tradingSessions, patterns,
     strategies, analysisProfiles, analysisProfileEvents, analysisProfileSources, analysisProfileMessages, trades, accounts, instrumentCatalog, learnedCommands, mentalHealthProfile, aiChatHistory, companionState, sessionSignatures, userPreferences,
     authSessions, externalIdentities, securityEvents, authTransactions, health,
-    commercialConfig, markupRules, providerModelPricing, wallet, subscriptionBonus, quota, analysisSymbols,
+    commercialConfig, markupRules, providerModelPricing, wallet, subscriptionBonus, quota,
     subscriptions, paymentTransactions, paymentEvents, cryptoInvoices, discountCodes, discountRedemptions, bscPaymentSecrets, storageProducts, storageEntitlements, storageObjects,
     mediaAssets, mediaAssetLinks,
     conversationScenarios, conversationAudioAssets, conversationScenarioExposures,

@@ -8,6 +8,8 @@ import { UploadField } from '../forms/UploadField.jsx';
 import { InstrumentPicker } from '../forms/InstrumentPicker.jsx';
 import { AiMagicFill } from '../feedback/AiMagicFill.jsx';
 import { useAiFieldFill } from '../../hooks/useAiFieldFill.js';
+import { planLimitCopy, planLimitInfo, planLimitMessage, currentLanguage } from '../../hooks/planLimit.js';
+import { createSubmitGuard } from '../../hooks/submitGuard.js';
 
 export const TIMEFRAMES = ['5m', '15m', '1h', '4h', '1D'];
 export const SESSION_CITIES = ['London', 'New York', 'Tokyo', 'Sydney'];
@@ -60,6 +62,23 @@ function liveTradingSession(now) {
 function todayIso() { return new Date().toISOString().slice(0, 10); }
 function todayJalali() { return new Intl.DateTimeFormat('fa-IR-u-ca-persian', { year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date()); }
 
+/* Why a refused create did not happen, in one warning Notice: the plan-limit sentence (the server's own limit/used
+   numbers, localized) with an optional "View plans" action, or - for any other refusal - a plain "nothing was
+   saved" line. Exported so the wording and the presence of the action can be rendered and checked on their own. */
+export function CreateFailureNotice({ error, lang, labels, onUpgrade }) {
+  const limitInfo = planLimitInfo(error);
+  return (
+    <Notice tone="warning" icon="alert-triangle" role="alert">
+      <span style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 10 }}>
+        <span>{limitInfo ? planLimitMessage(limitInfo, lang) : ((labels && labels.createFailed) || planLimitCopy('createFailed', lang))}</span>
+        {limitInfo && onUpgrade && (
+          <Button variant="secondary" size="sm" onClick={onUpgrade}>{(labels && labels.viewPlans) || planLimitCopy('viewPlans', lang)}</Button>
+        )}
+      </span>
+    </Notice>
+  );
+}
+
 /* New-session dialog — optional chart uploads, session settings, one primary action.
    `accountOptions`: [{value, label}] of the user's real ACTIVE accounts only (defect #3 - an
    archived account is never selectable here), supplied by the caller (character-app.jsx, reading
@@ -68,7 +87,7 @@ function todayJalali() { return new Intl.DateTimeFormat('fa-IR-u-ca-persian', { 
    hidden rather than shown with a single fake "No account" option - defect #5 scoping is entirely
    opt-in and must never suggest there is something to pick when there is nothing real to pick. */
 export function NewSessionDialog({
-  open = true, eyebrow, onClose, onCreate, labels, accountOptions,
+  open = true, eyebrow, onClose, onCreate, onUpgrade, labels, accountOptions,
   // `city` is intentionally absent here - see the live-detection effect below, which picks the
   // real, currently-open market session as the default instead of a fixed guess. An explicit
   // defaults.city from a future caller still wins (checked first, same as every other field).
@@ -76,6 +95,7 @@ export function NewSessionDialog({
   style, ...rest
 }) {
   const t = { ...DEFAULT_LABELS, ...labels };
+  const lang = currentLanguage();
   // Defect: "New session" always opened defaulted to a fixed 'London', requiring a manual pick
   // every time even though the real, currently-open trading session is always knowable. `city`
   // now defaults to that live session, and re-syncs to whatever is live every time the dialog is
@@ -148,6 +168,20 @@ export function NewSessionDialog({
     mountedRef.current = true;
     return () => { mountedRef.current = false; };
   }, []);
+
+  // Creating is server-confirmed and can be REFUSED (plan limit, validation, network): `onCreate` returns a
+  // Promise that rejects then. The dialog stays open with a warning Notice explaining why and the primary
+  // action usable again, and while the request is in flight the primary shows its loading state and a second
+  // submit (double click, or the AI submitting while the button is held) is ignored - the dialog no longer
+  // closes before the outcome is known, so nothing here may create two sessions.
+  const [submitting, setSubmitting] = React.useState(false);
+  const [createError, setCreateError] = React.useState(null);
+  const guard = React.useMemo(
+    () => createSubmitGuard({ setSubmitting, setError: setCreateError, isMounted: () => mountedRef.current }),
+    []
+  );
+  React.useEffect(() => { if (open) setCreateError(null); }, [open]);
+  const runCreate = React.useCallback((values) => guard.run(() => (onCreate ? onCreate(values) : undefined)), [guard, onCreate]);
   React.useEffect(() => {
     const registry = window.TradeJournalAIProcessRegistry;
     if (!registry) return undefined;
@@ -172,12 +206,12 @@ export function NewSessionDialog({
         // guess here); a value that fails that resolution stays unfilled rather than accepted.
         else if (path === 'instrument') { if (value) setInstrument(String(value)); }
       },
-      submit: () => onCreate && onCreate({
+      submit: () => runCreate({
         city, timeframe, gregorian, jalali, loop, grace, accountId: accountId || null, instrument,
         uploads: Object.entries(uploads).map(([slot, u]) => ({ timeframe: slot, file: u.file }))
       })
     });
-  }, [city, timeframe, gregorian, jalali, loop, grace, accountId, instrument, hasAccounts, accountOptions, uploads, onCreate]);
+  }, [city, timeframe, gregorian, jalali, loop, grace, accountId, instrument, hasAccounts, accountOptions, uploads, runCreate]);
 
   function selectFile(slot, file) {
     setUploads((prev) => {
@@ -207,10 +241,11 @@ export function NewSessionDialog({
           <Button
             variant="primary"
             disabled={!instrument}
-            onClick={() => onCreate && onCreate({
+            loading={submitting}
+            onClick={() => runCreate({
               city, timeframe, gregorian, jalali, loop, grace, accountId: accountId || null, instrument,
               uploads: Object.entries(uploads).map(([slot, u]) => ({ timeframe: slot, file: u.file }))
-            })}
+            }).catch(() => {})}
           >
             {hasUpload ? t.createSession : t.createWithoutChart}
           </Button>
@@ -219,6 +254,7 @@ export function NewSessionDialog({
       }
       {...rest}
     >
+      {createError && <CreateFailureNotice error={createError} lang={lang} labels={t} onUpgrade={onUpgrade} />}
       <Notice icon="status">{t.uploadNotice}</Notice>
       <div style={grid}>
         {UPLOAD_SLOTS.map((tf) => (
@@ -251,7 +287,7 @@ export function NewSessionDialog({
         <AiMagicFill active={instrumentFilled}>
           <label style={{ display: 'flex', flexDirection: 'column', gap: 7, minWidth: 0 }}>
             <FieldLabel>{t.instrument} *</FieldLabel>
-            <InstrumentPicker value={instrument} onChange={setInstrument} width="100%" />
+            <InstrumentPicker value={instrument} onChange={setInstrument} onUpgrade={onUpgrade} width="100%" />
           </label>
         </AiMagicFill>
         {isFa ? (

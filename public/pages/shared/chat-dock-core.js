@@ -54,8 +54,8 @@
   // Subscription-limit behavior: the real client-side count for a quota-gated resource, never a
   // second, invented counter - reuses whichever store already holds the real list. Returns null
   // (never 0) for a resource type this pass has no real client-side counter for yet
-  // (analysisSymbols has no real "active symbol" UI feature in this app at all as of this pass -
-  // see docs/ai/form-interview-contract.md's own honestly-recorded gap) - null means the preflight
+  // (analysisSymbols - the Instrument Catalog cap - is enforced by the server on add and explained by
+  // the InstrumentPicker itself, so it is deliberately not preflighted here) - null means the preflight
   // below fails open rather than guessing a count.
   function resourceUsageCount(resourceType) {
     if (resourceType === 'sessions' && window.TradeJournalWorkspace && typeof window.TradeJournalWorkspace.list === 'function') {

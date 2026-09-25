@@ -11,7 +11,7 @@ const translations = {
     navGroupMonitor: 'Monitor', navGroupMonetize: 'Monetize', navGroupConfigure: 'Configure',
     comPageSubtitle: 'Plans, wallet, subscriptions, storage add-ons, transactions and crypto payments - one tab open at a time.',
     comSubPlans: 'Plans', comSubWallet: 'Wallet', comSubHistory: 'Configuration History',
-    comUnlimited: 'Unlimited', comStorageBytes: 'Storage (bytes)', comLimitPatterns: 'Patterns', comLimitStrategies: 'Strategies', comLimitAccounts: 'Connected Accounts', comLimitSessions: 'Sessions', comLimitAnalysisSymbols: 'Analysis Symbols',
+    comUnlimited: 'Unlimited', comStorageBytes: 'Storage (bytes)', comLimitPatterns: 'Patterns', comLimitStrategies: 'Strategies', comLimitAccounts: 'Connected Accounts', comLimitSessions: 'Sessions', comLimitAnalysisSymbols: 'Instruments (catalog)',
     comFeatureWallet: 'Wallet enabled', comFeatureAi: 'AI (wallet-based)', comFeatureVoice: 'Voice (wallet-based)', comFeatureAiPanelBuilder: 'AI Panel Builder',
     comFeatureByok: 'Personal API key (BYOK)', comFeaturePremiumModels: 'Premium AI models (GPT-5.6 Sol, Claude Opus 4.1)',
     comPlanDisplayName: 'Display name (blank = default)', comPlanTokenDiscount: 'AI token discount %',

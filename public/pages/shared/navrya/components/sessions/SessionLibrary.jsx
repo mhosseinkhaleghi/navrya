@@ -24,6 +24,9 @@ export function SessionLibrary({
   const [query, setQuery] = React.useState('');
   const [view, setView] = React.useState('grid');
   const [dialog, setDialog] = React.useState(false);
+  // `onUpgrade` (optional) is the caller's own "take me to the plans" navigation; the library only adds
+  // closing the dialog first.
+  const { onUpgrade: upgradeHandler, ...dialogProps } = newSessionDialogProps || {};
 
   // Instrument Catalog domain: populated from the catalog itself plus any instrument already
   // assigned to a real session, so a code the user added but hasn't used in a session yet still
@@ -99,8 +102,16 @@ export function SessionLibrary({
       )}
       <NewSessionDialog
         open={dialog} onClose={() => setDialog(false)}
-        onCreate={(values) => { setDialog(false); return onNewSession ? onNewSession(values) : undefined; }}
-        {...newSessionDialogProps}
+        // The dialog stays open until the create has actually succeeded: a refused create (plan limit,
+        // validation, network) rejects here, so the dialog can explain it and stay usable, and nothing
+        // downstream (navigation into the new session) runs for a session that was never saved.
+        onCreate={async (values) => {
+          const created = onNewSession ? await onNewSession(values) : undefined;
+          setDialog(false);
+          return created;
+        }}
+        {...dialogProps}
+        onUpgrade={upgradeHandler ? () => { setDialog(false); upgradeHandler(); } : undefined}
       />
     </section>
   );

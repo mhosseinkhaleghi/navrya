@@ -14,7 +14,10 @@ async function countCurrent(resourceType, userId, repo) {
   // Archived accounts don't count against the limit - they were already voluntarily given up
   // (spec section 5's "current resources, not lifetime creations").
   if (resourceType === 'accounts') return (await repo.accounts.listByUser(userId)).filter((a) => a.status !== 'archived').length;
-  if (resourceType === 'analysisSymbols') return (await repo.analysisSymbols.listByUser(userId)).length;
+  // `analysisSymbols` is the plan's instrument cap. It is bound to the ONE canonical instrument store
+  // the Session InstrumentPicker really writes (the Instrument Catalog, routes.instrument-catalog.mjs), never a
+  // separate symbol table - a second store the picker never touches would leave the cap unenforced.
+  if (resourceType === 'analysisSymbols') return (await repo.instrumentCatalog.listByUser(userId)).length;
   throw new Error('Unknown quota resourceType: ' + resourceType);
 }
 
@@ -28,7 +31,9 @@ export async function createWithQuota(resourceType, userId, repo, createFn) {
     const limit = entitlements.limits[resourceType];
     if (limit != null) {
       const count = await countCurrent(resourceType, userId, repo);
-      if (count >= limit) throw new ApiError(403, 'PLAN_LIMIT_REACHED');
+      // resource/limit/used/plan let the client show an actionable, localized notice without a second round trip
+      // or any client-side plan number; they are the caller's own plan facts, nothing about other users.
+      if (count >= limit) throw new ApiError(403, 'PLAN_LIMIT_REACHED', undefined, { resource: resourceType, limit, used: count, plan: entitlements.plan });
     }
     return createFn();
   });

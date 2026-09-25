@@ -12,6 +12,9 @@ import { MetricTile } from '../public/pages/shared/navrya/components/metrics/Met
 import { Toggle } from '../public/pages/shared/navrya/components/forms/Toggle.jsx';
 import { ModelGlyph } from '../public/pages/shared/navrya/components/assistant/ModelSwitcher.jsx';
 import { memorySnapshot, clearChatHistory, providerLabel } from './aiSettingsAdapter.js';
+// Customer AI charges: exact (provider, model) selectors over what the server actually debited from the wallet.
+import { allEnginesTotal } from './aiWalletUsage.js';
+import { EngineCardCharges, EngineChargesList, AllEnginesChargesList } from './aiWalletUsageView.jsx';
 import { currentNavryaCharacter } from './currentCharacter.js';
 // Panel Builder moved here from Settings (it's an AI capability, not a setting) - reuses the
 // exact same real board record/APIs Settings' own ManagePanelsSection and the real Dashboard
@@ -256,10 +259,11 @@ function DashQuickCard({ i18n, icon, titleKey, hintKey, goKey, onGo, soon, trail
   );
 }
 
-function DashboardTab({ i18n, catalog, model, usageMonth, usageToday, realCostByModel, chats, memory, memoryRows, character, engGlyph, walletBalanceUsd, walletRunwayDays, onSelectEngine, onGoTab, onNewChat, onContinueChat }) {
+function DashboardTab({ i18n, catalog, model, usageMonth, usageToday, realCostByModel, recentCostByModel, chats, memory, memoryRows, character, engGlyph, walletBalanceUsd, walletRunwayDays, onSelectEngine, onGoTab, onNewChat, onContinueChat }) {
   const monthTokens = Object.values(usageMonth.byProvider || {}).reduce((sum, p) => sum + (p.totalTokens || 0), 0);
   const avgTokens = chats.length ? Math.round(chats.reduce((sum, c) => sum + (c.tokens || 0), 0) / chats.length) : 0;
-  const monthCostUsd = (realCostByModel || []).reduce((sum, r) => sum + (Number(r.retailChargeMicroUsd) || 0), 0) / 1000000;
+  // Last 30 days of wallet debits, all engines - an explicit all-engines total, labelled as the last 30 days.
+  const monthCostUsd = allEnginesTotal(recentCostByModel).walletDebitMicroUsd / 1000000;
   const aiSettingsForKeys = window.TradeJournalAISettingsStore;
   const board = React.useMemo(() => loadBoard(character), [character]);
   const personaStore = window.TradeJournalAICompanionProfile;
@@ -310,7 +314,7 @@ function DashboardTab({ i18n, catalog, model, usageMonth, usageToday, realCostBy
               {catalog.map((entry) => {
                 const on = entry.id === model;
                 const monthP = (usageMonth.byProvider[entry.id] && usageMonth.byProvider[entry.id].totalTokens) || 0;
-                const modelRow = (realCostByModel || []).find((r) => r.provider === entry.id);
+                const configuredModel = (aiSettingsForKeys && aiSettingsForKeys.settings().modelByProvider[entry.id]) || (entry.models && entry.models[0]) || '';
                 const configured = aiSettingsForKeys ? !!aiSettingsForKeys.getKey(entry.id) : false;
                 const off = !on && !configured;
                 return (
@@ -334,8 +338,7 @@ function DashboardTab({ i18n, catalog, model, usageMonth, usageToday, realCostBy
                       </div>
                       <div style={{ display: 'flex', flexDirection: 'column', gap: 7 }}>
                         <span style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', gap: 10 }}><span style={{ font: 'var(--type-caption)', color: 'var(--text-muted)' }}>{i18n.t('aiAsstThisMonth')}</span><span className="navrya-tabular" style={{ fontWeight: 600, fontSize: 17, lineHeight: '22px', color: 'var(--parchment)' }}>{i18n.number(monthP)}</span></span>
-                        <span style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', gap: 10 }}><span style={{ font: 'var(--type-caption)', color: 'var(--text-muted)' }}>{i18n.t('aiAsstRealCostTitle')}</span><span className="navrya-tabular" style={{ fontWeight: 600, fontSize: 17, lineHeight: '22px', color: 'var(--parchment)' }}>{modelRow ? fmtUsd(modelRow.retailChargeMicroUsd) : '$0.0000'}</span></span>
-                        <span style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', gap: 10 }}><span style={{ font: 'var(--type-caption)', color: 'var(--text-muted)' }}>{i18n.t('aiAsstModelLabel')}</span><span style={{ font: 'var(--type-body)', color: 'var(--text-primary)' }}>{(modelRow && modelRow.model) || (entry.models && entry.models[0]) || '—'}</span></span>
+                        <EngineCardCharges i18n={i18n} engineLabel={providerLabel(i18n, entry.id)} rows={realCostByModel} provider={entry.id} configuredModel={configuredModel} />
                       </div>
                       <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
                         {configured
@@ -1724,28 +1727,10 @@ function CostsTab({ i18n, catalog, usageStore, settingsStore, realCostByModel })
       </Panel>
 
       <Panel variant="base" padding={0}>
-        <PanelHeader icon="coins" title={i18n.t('aiAsstRealCostTitle')} trailing={<span style={{ font: 'var(--type-caption)', color: 'var(--text-dim)' }}>{i18n.t('aiAsstRealCostHint')}</span>} />
-        <div style={{ padding: '16px 20px 20px' }}>
-          {!realCostByModel || !realCostByModel.length ? (
-            <span style={{ font: 'var(--type-body)', color: 'var(--text-muted)' }}>{i18n.t('aiAsstRealCostEmpty')}</span>
-          ) : (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 11 }}>
-              {realCostByModel.map((row) => (
-                <Panel key={row.provider + '/' + row.model} variant="raised" padding="12px 13px" style={{ display: 'flex', flexDirection: 'column', gap: 9 }}>
-                  <span style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                    <span style={{ width: 10, height: 10, borderRadius: 3, background: providerColor(row.provider), display: 'block', flex: 'none' }}></span>
-                    <span style={{ font: 'var(--type-body)', color: 'var(--text-primary)' }}>{row.provider + ' / ' + (row.model || '—')}</span>
-                  </span>
-                  <div dir="ltr" style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-                    <span style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between' }}><span className="cap" style={{ font: 'var(--type-caption)', color: 'var(--text-muted)' }}>{i18n.t('aiAsstRealCostTokens')}</span><span className="navrya-tabular" style={{ font: 'var(--type-body)', color: 'var(--text-primary)' }}>{i18n.number(row.totalTokens)}</span></span>
-                    <span style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between' }}><span className="cap" style={{ font: 'var(--type-caption)', color: 'var(--text-muted)' }}>{i18n.t('aiAsstRealCostCalls')}</span><span className="navrya-tabular" style={{ font: 'var(--type-body)', color: 'var(--text-primary)' }}>{i18n.number(row.calls)}</span></span>
-                    <span style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between' }}><span className="cap" style={{ font: 'var(--type-caption)', color: 'var(--text-muted)' }}>{i18n.t('aiAsstRealCostProviderCost')}</span><span className="navrya-tabular" style={{ font: 'var(--type-body)', color: 'var(--text-primary)' }}>{fmtUsd(row.providerCostMicroUsd)}</span></span>
-                    <span style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between' }}><span className="cap" style={{ font: 'var(--type-caption)', color: 'var(--text-muted)' }}>{i18n.t('aiAsstRealCostCharged')}</span><span className="navrya-tabular" style={{ font: 'var(--type-body)', color: 'var(--char-accent)' }}>{fmtUsd(row.retailChargeMicroUsd)}</span></span>
-                  </div>
-                </Panel>
-              ))}
-            </div>
-          )}
+        <PanelHeader icon="coins" title={i18n.t('aiAsstRealCostTitle')} trailing={<Chip tone="neutral">{i18n.t('aiAsstRealCostAllEngines')}</Chip>} />
+        <div style={{ padding: '16px 20px 20px', display: 'flex', flexDirection: 'column', gap: 11 }}>
+          <span style={{ font: 'var(--type-caption)', color: 'var(--text-dim)' }}>{i18n.t('aiAsstRealCostHint')}</span>
+          <AllEnginesChargesList i18n={i18n} rows={realCostByModel} providerColor={providerColor} />
         </div>
       </Panel>
 
@@ -2097,6 +2082,7 @@ function AiAssistantView({ i18n, settingsStore, usageStore, chatHistoryStore }) 
   // realCostByModel above, which stays lifetime-scoped for the Engines tab exactly as before).
   // null runway (not 0) when there's no recent spend to extrapolate from.
   const [walletBalanceUsd, setWalletBalanceUsd] = React.useState(null);
+  const [recentCostByModel, setRecentCostByModel] = React.useState(null);
   const [walletRunwayDays, setWalletRunwayDays] = React.useState(null);
   React.useEffect(() => {
     Promise.all([
@@ -2106,7 +2092,8 @@ function AiAssistantView({ i18n, settingsStore, usageStore, chatHistoryStore }) 
       const balanceUsd = wallet ? (Number(wallet.totalBalanceMicroUsd) || 0) / 1000000 : null;
       setWalletBalanceUsd(balanceUsd);
       const rows = (recent && recent.byModel) || [];
-      const totalMicroUsd = rows.reduce((sum, row) => sum + (Number(row.retailChargeMicroUsd) || 0), 0);
+      setRecentCostByModel(rows);
+      const totalMicroUsd = allEnginesTotal(rows).walletDebitMicroUsd;
       const avgDailyUsd = totalMicroUsd / 1000000 / 30;
       setWalletRunwayDays(balanceUsd != null && avgDailyUsd > 0 ? Math.round(balanceUsd / avgDailyUsd) : null);
     });
@@ -2382,7 +2369,7 @@ function AiAssistantView({ i18n, settingsStore, usageStore, chatHistoryStore }) 
 
       {topTab === 'dashboard' && (
         <DashboardTab
-          i18n={i18n} catalog={catalog} model={model} usageMonth={usageMonth} usageToday={usageToday} realCostByModel={realCostByModel}
+          i18n={i18n} catalog={catalog} model={model} usageMonth={usageMonth} usageToday={usageToday} realCostByModel={realCostByModel} recentCostByModel={recentCostByModel}
           chats={chats} memory={memory} memoryRows={memoryRows} character={character} engGlyph={engGlyph}
           walletBalanceUsd={walletBalanceUsd} walletRunwayDays={walletRunwayDays}
           onSelectEngine={selectEngineFromDashboard} onGoTab={setTopTab} onNewChat={newChat} onContinueChat={continueInDock}
@@ -2542,24 +2529,9 @@ function AiAssistantView({ i18n, settingsStore, usageStore, chatHistoryStore }) 
                   <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
                     <span style={{ font: 'var(--type-section-label)', letterSpacing: 'var(--tracking-label)', color: 'var(--text-muted)', textTransform: 'uppercase' }}>{i18n.t('aiAsstRealCostTitle')}</span>
                     <span style={{ font: 'var(--type-caption)', color: 'var(--text-dim)' }}>{i18n.t('aiAsstRealCostHint')}</span>
+                    <span style={{ font: 'var(--type-caption)', color: 'var(--text-dim)' }}>{i18n.t('aiAsstRealCostEngineOnly', { engine: providerLabel(i18n, model) })}</span>
                   </div>
-                  {!realCostByModel || !realCostByModel.length ? (
-                    <span style={{ font: 'var(--type-body)', color: 'var(--text-muted)' }}>{i18n.t('aiAsstRealCostEmpty')}</span>
-                  ) : (
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-                      {realCostByModel.map((row) => (
-                        <div key={row.provider + '/' + row.model} style={{ display: 'flex', flexDirection: 'column', gap: 4, padding: '10px 12px', border: '1px solid var(--border-hairline)', borderRadius: 8, background: 'rgba(11,20,21,.55)' }}>
-                          <span style={{ font: 'var(--type-body)', color: 'var(--text-primary)' }}>{row.provider + ' / ' + (row.model || '—')}</span>
-                          <div dir="ltr" style={{ display: 'flex', flexWrap: 'wrap', gap: 12, font: 'var(--type-caption)', color: 'var(--text-muted)' }}>
-                            <span>{i18n.t('aiAsstRealCostCalls')}: {i18n.number(row.calls)}</span>
-                            <span>{i18n.t('aiAsstRealCostTokens')}: {i18n.number(row.totalTokens)}</span>
-                            <span>{i18n.t('aiAsstRealCostProviderCost')}: {fmtUsd(row.providerCostMicroUsd)}</span>
-                            <span style={{ color: 'var(--char-accent)' }}>{i18n.t('aiAsstRealCostCharged')}: {fmtUsd(row.retailChargeMicroUsd)}</span>
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  )}
+                  <EngineChargesList i18n={i18n} engineLabel={providerLabel(i18n, model)} rows={realCostByModel} provider={model} selectedModel={settings.modelByProvider[model]} />
                 </div>
               </Panel>
 

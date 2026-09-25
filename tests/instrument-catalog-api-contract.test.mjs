@@ -120,6 +120,8 @@ test('DELETE removes a catalog entry outright - no archive semantics, since noth
 
 test('listByUser returns entries sorted by code', async () => {
   const user = await createUser('Sorted Catalog Trader');
+  // Two instruments: past the Free plan's instrument cap (see tests/commercial-limits-enforcement.test.mjs), so a paid plan.
+  await repo.users.update(user.id, { plan: 'plus' });
   await api('POST', '/api/sync/instrument-catalog', { userId: user.id, body: { id: 'instr-f1', code: 'XAUUSD' } });
   await api('POST', '/api/sync/instrument-catalog', { userId: user.id, body: { id: 'instr-f2', code: 'BTCUSDT' } });
   const list = await api('GET', '/api/sync/instrument-catalog', { userId: user.id });

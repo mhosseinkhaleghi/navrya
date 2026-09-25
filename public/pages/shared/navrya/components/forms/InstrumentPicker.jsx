@@ -1,6 +1,7 @@
 import React from 'react';
 import { Icon } from '../core/Icon.jsx';
 import { Chip } from './Chip.jsx';
+import { planLimitCopy, planLimitInfo, planLimitMessage, currentLanguage } from '../../hooks/planLimit.js';
 
 /* Instrument Catalog picker - closed-list select, with an explicit "type a new code, add it"
    affordance (the one creatable-combobox this app needs; every other picker here is a fixed
@@ -11,9 +12,14 @@ import { Chip } from './Chip.jsx';
    `multiple` mode. `onChange` receives the same shape back. Adding a new code calls the store's
    create(), which returns the real write Promise - this component awaits it (disabling the Add
    affordance meanwhile) before adding the code to `value`, since a brand-new session/trade/
-   pattern requires the code to already exist in the catalog server-side. */
+   pattern requires the code to already exist in the catalog server-side.
+
+   The catalog is capped by the plan (`analysisSymbols`, enforced server-side - a brand-new code past the
+   cap is refused with 403 PLAN_LIMIT_REACHED). A refusal is explained in the list, in the user's language,
+   with the numbers the server reported; `onUpgrade` (optional) adds a "View plans" action next to it. The
+   code is never added to `value` for a refused add. */
 export function InstrumentPicker({
-  value, onChange, multiple = false, placeholder = 'e.g. XAUUSD', disabled = false, width, style, labels
+  value, onChange, multiple = false, placeholder = 'e.g. XAUUSD', disabled = false, width, style, labels, onUpgrade
 }) {
   const t = { addPrefix: 'Add', noMatches: 'No instruments yet - type one to add it', addFailed: 'Could not add this instrument', ...labels };
   const store = window.TradeJournalInstrumentCatalogStore;
@@ -22,6 +28,7 @@ export function InstrumentPicker({
   const [query, setQuery] = React.useState('');
   const [adding, setAdding] = React.useState(false);
   const [error, setError] = React.useState('');
+  const [limitReached, setLimitReached] = React.useState(false);
   const ref = React.useRef(null);
   const inputRef = React.useRef(null);
 
@@ -61,13 +68,16 @@ export function InstrumentPicker({
 
   async function addNew() {
     if (!normalizedQuery || !store || adding) return;
-    setAdding(true); setError('');
+    setAdding(true); setError(''); setLimitReached(false);
     try {
-      const entry = await store.create(normalizedQuery);
+      // silent: this component renders the failure itself (below), so the replica's generic toast is redundant.
+      const entry = await store.create(normalizedQuery, undefined, { silent: true });
       setCatalog(store.listSync());
       commitAdd(entry.code);
-    } catch (_) {
-      setError(t.addFailed);
+    } catch (addError) {
+      const info = planLimitInfo(addError);
+      setLimitReached(Boolean(info));
+      setError(info ? planLimitMessage(info, currentLanguage()) : t.addFailed);
     } finally {
       setAdding(false);
     }
@@ -137,6 +147,17 @@ export function InstrumentPicker({
           {!matches.length && !canOfferAdd && (
             <li style={{ padding: '8px 12px', color: 'var(--text-muted)', font: 'var(--type-caption)' }}>{t.noMatches}</li>
           )}
+          {error && (
+            <li role="alert" style={{ padding: '8px 12px', color: 'var(--danger)', font: 'var(--type-caption)', whiteSpace: 'normal' }}>
+              <span>{error}</span>
+              {limitReached && onUpgrade && (
+                <button
+                  type="button" onClick={onUpgrade}
+                  style={{ display: 'block', marginTop: 6, padding: 0, border: 0, background: 'transparent', cursor: 'pointer', color: 'var(--char-accent)', font: 'var(--type-caption)', fontWeight: 600, textDecoration: 'underline' }}
+                >{planLimitCopy('viewPlans', currentLanguage())}</button>
+              )}
+            </li>
+          )}
           {canOfferAdd && (
             <li>
               <button
@@ -150,9 +171,6 @@ export function InstrumentPicker({
             </li>
           )}
         </ul>
-      )}
-      {error && (
-        <span style={{ position: 'absolute', top: '100%', left: 0, marginTop: 2, color: 'var(--danger)', font: 'var(--type-caption)' }}>{error}</span>
       )}
     </div>
   );

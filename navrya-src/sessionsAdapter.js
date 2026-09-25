@@ -210,14 +210,28 @@ export async function createSession(character, values) {
     createdAt: now,
     entries
   };
-  // Optimistic apply, fire-and-forget send (matches every other migrated domain's save()/
-  // create() - see server-replica.js's own file header): the record is already in the replica's
-  // in-memory list by the time upsert() returns its Promise, so this never blocks the dialog on
-  // the network the way an `await` here would (the old localStorage write never did either).
+  // Server-confirmed create, never an optimistic one. A new session is gated server-side (plan limit,
+  // instrument catalog membership, account ownership), so the caller must not act on it - navigate into
+  // it, announce it, list it - until the server has accepted it. Previously this applied the record
+  // optimistically, swallowed the write's rejection and returned the session at once: a refused create
+  // (403 PLAN_LIMIT_REACHED) still opened a Session that was rolled back a moment later, and the trader
+  // was told nothing. `confirmFirst` keeps the record out of the list until it is accepted; a rejection
+  // propagates (error.code/details carry the server's reason - see server-replica.js) so the dialog can
+  // stay open and explain it, and the chart images this call already stored are removed again.
   const live = domain();
-  if (live) live.upsert(session).catch(() => {});
-  window.dispatchEvent(new CustomEvent('tradejournal:sessions-changed', { detail: { character, count: live ? live.list().length : 1 } }));
-  return session;
+  if (!live) throw new Error('NO_REPLICA');
+  let saved;
+  try {
+    saved = await live.upsert(session, { confirmFirst: true, silent: true });
+  } catch (error) {
+    const store = window.TradeJournalImageStore;
+    if (store && typeof store.deleteImage === 'function') {
+      entries.forEach((entry) => { if (entry.imageBlobId) Promise.resolve(store.deleteImage(entry.imageBlobId)).catch(() => {}); });
+    }
+    throw error;
+  }
+  window.dispatchEvent(new CustomEvent('tradejournal:sessions-changed', { detail: { character, count: live.list().length } }));
+  return saved || session;
 }
 
 // Historical one-time reset for a pre-server-sync bug where a fresh install could end up with

@@ -4,6 +4,7 @@ import { getBillingProvider } from '../commercial/billing-provider-factory.mjs';
 import { buildInvoiceDto, checkInvoicePayment } from '../commercial/crypto-invoice-service.mjs';
 import { getWalletRules } from '../commercial/commercial-config.mjs';
 import { enrichTransactionsForCustomer, enrichLedgerEntries } from '../commercial/subscription-bonus.mjs';
+import { toCustomerLedgerEntry } from '../commercial/customer-billing-dto.mjs';
 
 // Commercial System Slice 1/2 - the user-facing AI Wallet (spec section 55/57). Mounted at
 // /api/sync/wallet, same requireAuth()+csrfProtection() chain as every other /api/sync/* route.
@@ -34,9 +35,12 @@ export function router(repo) {
   }));
 
   // Each AI settlement also reports how much of it the subscription bonus covered, and each bonus / bonus-reversal entry
-  // its lot's state (original / used on AI / remaining / reversed) - see enrichLedgerEntries().
+  // its lot's state (original / used on AI / remaining / reversed) - see enrichLedgerEntries(). Customer-facing: each
+  // entry is cut down to the fields a customer may see (toCustomerLedgerEntry) - the raw ledger row also carries the
+  // provider API cost, markup and admin/idempotency internals, which never leave the server on this route.
   app.get('/ledger', asyncHandler(async (req, res) => {
-    res.json({ entries: await enrichLedgerEntries(repo, await repo.wallet.ledgerForUser(req.currentUser.id, { limit: 50 })) });
+    const entries = await enrichLedgerEntries(repo, await repo.wallet.ledgerForUser(req.currentUser.id, { limit: 50 }));
+    res.json({ entries: entries.map(toCustomerLedgerEntry) });
   }));
 
   // Billing History (real UI addition) - every payment_transactions row for this user, whatever

@@ -70,7 +70,11 @@ export async function checkInvoicePayment(repo, invoiceId, { txHash } = {}) {
   // .trim() before anything else - a hash copy-pasted from a wallet app or block explorer very
   // commonly carries a trailing newline/space, which would otherwise reach the RPC call below as
   // part of the parameter and could get a malformed-request response from the provider.
-  const candidateHash = (txHash || invoice.txHash || '').trim() || null;
+  // Lower-cased: a transaction hash is case-insensitive on chain but was compared case-sensitively here, so the same
+  // transfer submitted with a different letter case (0xAB.. / 0xab..) used to be a "different" hash and could pay a
+  // second invoice. One canonical case at the boundary, and the repositories compare case-insensitively too (a hash
+  // stored before this rule may still be mixed-case).
+  const candidateHash = (txHash || invoice.txHash || '').trim().toLowerCase() || null;
   const hasExpired = invoice.status === 'expired' || new Date(invoice.expiresAt).getTime() <= Date.now();
   // An expired invoice cannot be discovered or paid automatically. But a payer who has already
   // sent funds can still prove that exact transfer with its hash: blocking that check would strand

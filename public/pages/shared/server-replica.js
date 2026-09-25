@@ -95,9 +95,21 @@
   // it's capped at a 64KB body by spec, which every write here comfortably fits (session/pattern/
   // strategy image bytes are already uploaded separately through TradeJournalImageStore, never
   // inlined into this JSON body except as a last-resort data-URL fallback - see sessionsAdapter.js).
+  //
+  // A failed response's JSON error body ({ error: 'CODE', ...details }) is attached as error.code /
+  // error.details (best effort - a non-JSON body just leaves them unset), so a caller that renders its own
+  // notice can tell PLAN_LIMIT_REACHED (403, with the plan's limit/used numbers) from a real save failure.
   function requestJson(url, options) {
     return fetch(url, options).then(function (response) {
-      if (!response.ok) { var error = new Error('REPLICA_REQUEST_FAILED'); error.status = response.status; throw error; }
+      if (!response.ok) {
+        var error = new Error('REPLICA_REQUEST_FAILED');
+        error.status = response.status;
+        var readBody = typeof response.json === 'function' ? response.json().catch(function () { return null; }) : Promise.resolve(null);
+        return readBody.then(function (body) {
+          if (body && typeof body === 'object') { error.code = body.error; error.details = body; }
+          throw error;
+        });
+      }
       if (response.status === 204) return null;
       return response.json();
     });
@@ -177,12 +189,21 @@
     }
     function NOOP() {}
 
-    function upsert(item) {
+    // options (both optional, both for a caller that awaits the write and renders its own outcome):
+    //   confirmFirst - the record enters the list only once the server has ACCEPTED it. Nothing is applied
+    //     optimistically, so a server refusal (a plan limit, a validation error) never leaves a ghost record
+    //     in list() - not even for the length of the round trip - and there is nothing to roll back.
+    //   silent - suppress the generic "save failed" toast; the caller shows a more specific message itself.
+    function upsert(item, options) {
+      var confirmFirst = Boolean(options && options.confirmFirst);
+      var silent = Boolean(options && options.silent);
       var applied = deepClone(item);
-      var index = state.items.findIndex(function (existing) { return existing.id === applied.id; });
-      var nextItems = state.items.slice();
-      if (index > -1) nextItems[index] = applied; else nextItems.unshift(applied);
-      setAllLocal(nextItems); // synchronous optimistic apply
+      if (!confirmFirst) {
+        var index = state.items.findIndex(function (existing) { return existing.id === applied.id; });
+        var nextItems = state.items.slice();
+        if (index > -1) nextItems[index] = applied; else nextItems.unshift(applied);
+        setAllLocal(nextItems); // synchronous optimistic apply
+      }
 
       return afterPending(item.id, function () {
         // Captured only once any earlier write to this same id has already settled - see the
@@ -192,6 +213,7 @@
         var previousItem = (i > -1 && current[i] !== applied) ? current[i] : undefined;
 
         function rollback() {
+          if (confirmFirst) return; // nothing was applied, so nothing to undo
           var latest = state.items.slice();
           var j = latest.findIndex(function (existing) { return existing.id === applied.id; });
           if (j === -1 || latest[j] !== applied) return; // superseded already - leave it alone
@@ -199,12 +221,19 @@
           setAllLocal(latest);
         }
 
-        if (!hasCurrentUser()) { rollback(); toastSaveFailed(); throw new Error('NO_CURRENT_USER'); }
+        if (!hasCurrentUser()) { rollback(); if (!silent) toastSaveFailed(); throw new Error('NO_CURRENT_USER'); }
         return requestJson(config.writeUrl, {
           method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(item), keepalive: true
         }).then(function (saved) {
           var latest = state.items.slice();
           var j = latest.findIndex(function (existing) { return existing.id === applied.id; });
+          if (confirmFirst) {
+            // Applied only now that the server accepted it: replace a same-id record, else add it first.
+            var accepted = deepClone(saved) || applied;
+            if (j > -1) latest[j] = accepted; else latest.unshift(accepted);
+            setAllLocal(latest);
+            return accepted;
+          }
           if (j > -1 && latest[j] === applied) {
             var reconciled = deepClone(saved) || applied;
             latest[j] = reconciled;
@@ -214,7 +243,7 @@
           return saved || applied;
         }).catch(function (error) {
           rollback();
-          toastSaveFailed();
+          if (!silent) toastSaveFailed();
           throw error;
         });
       });

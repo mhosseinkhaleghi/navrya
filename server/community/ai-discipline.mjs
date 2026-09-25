@@ -185,9 +185,9 @@ export function legacyHasAnyAnalysis(sessions, cutoffIso) {
 }
 
 // The first valid chart entry (a real image plus a real, non-blank note) on a Session that
-// already carries a non-empty instrument - deliberately never the dormant analysisSymbols
-// domain (no real trader-facing flow exists for it - see routes.analysis-symbols.mjs's own
-// callers), and never restricted to the session's own creation order.
+// already carries a non-empty instrument - read from the Session itself (the Instrument Catalog
+// row is only the plan-capped list of codes a Session may pick from), and never restricted to the
+// session's own creation order.
 export function firstValidChartInstrumentSession(sessions) {
   return (sessions || []).find((session) => {
     if (!session.instrument || !String(session.instrument).trim()) return false;

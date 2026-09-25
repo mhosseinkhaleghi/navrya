@@ -15,14 +15,24 @@ import { ApiError } from '../community/errors.mjs';
 export async function activateOrRenewSubscription(repo, transaction) {
   const meta = transaction.metadata || {};
   const startedAt = new Date();
-  const periodEnd = new Date(startedAt);
-  if (meta.billingInterval === 'year') periodEnd.setFullYear(periodEnd.getFullYear() + 1);
-  else periodEnd.setMonth(periodEnd.getMonth() + 1);
+  const addInterval = (from) => {
+    const end = new Date(from);
+    if (meta.billingInterval === 'year') end.setFullYear(end.getFullYear() + 1);
+    else end.setMonth(end.getMonth() + 1);
+    return end;
+  };
+  const periodEnd = addInterval(startedAt);
 
   const existing = await repo.subscriptions.getActiveForUser(transaction.userId);
   if (existing && existing.planId === meta.planId) {
+    // Renewing early EXTENDS the paid-for period: the new interval is added to the period end the customer already
+    // has, never to "now" (which silently forfeited the days left on a renewal made before the period ended). The
+    // period start stays where it was - it is the same, longer, continuous period.
+    const currentEnd = new Date(existing.currentPeriodEnd);
+    const extendedEnd = currentEnd.getTime() > startedAt.getTime() ? addInterval(currentEnd) : periodEnd;
     return repo.subscriptions.update(existing.id, {
-      status: 'active', currentPeriodStart: startedAt.toISOString(), currentPeriodEnd: periodEnd.toISOString(),
+      status: 'active', currentPeriodStart: currentEnd.getTime() > startedAt.getTime() ? existing.currentPeriodStart : startedAt.toISOString(),
+      currentPeriodEnd: extendedEnd.toISOString(),
       cancelAtPeriodEnd: false, priceAmountMicroUsd: transaction.amountMicroUsd, currency: transaction.currency,
       paymentTransactionId: transaction.id
     });

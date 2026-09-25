@@ -37,7 +37,9 @@ test('GET /api/users/me/ai-usage-by-model returns only this user\'s own gateway-
   assert.equal(result.status, 200);
   assert.equal(result.body.byModel.length, 1);
   assert.equal(result.body.byModel[0].totalTokens, 100, 'the client-reported row and the other user\'s row must both be excluded');
-  assert.equal(result.body.byModel[0].providerCostMicroUsd, 2000);
+  // Customer-facing: never the provider's cost or the pricing internals - see tests/customer-ai-billing-dto.test.mjs.
+  assert.equal('providerCostMicroUsd' in result.body.byModel[0], false);
+  assert.equal(result.body.byModel[0].walletDebitMicroUsd, 0, 'no wallet settlement exists for this usage, so nothing was debited');
 });
 
 test('GET /api/admin/users/:id includes aiCost with a real per-model breakdown', async () => {

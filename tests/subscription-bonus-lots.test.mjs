@@ -604,7 +604,8 @@ function assertLedgerDto(entries, s) {
     [[s.oldest, BONUS], [s.middle, M(2)], [s.active, M(0.3)]], 'FIFO allocations, visible per lot');
 
   const grants = byType('SUBSCRIPTION_BONUS');
-  const grantFor = (txId) => grants.find((entry) => entry.metadata.transactionId === txId);
+  // A customer entry carries no `metadata` (internal - see customer-billing-dto.mjs), so its grant is found through the lot's own transaction id.
+  const grantFor = (txId) => grants.find((entry) => (entry.metadata ? entry.metadata.transactionId : entry.bonusLot && entry.bonusLot.transactionId) === txId);
   assert.deepEqual(pickBonus(grantFor(s.active).bonusLot), { status: 'active', originalMicroUsd: M(4), consumedMicroUsd: M(0.3), remainingMicroUsd: M(3.7), reversedMicroUsd: 0 });
   assert.equal(grantFor(s.active).bonusLot.transactionId, s.active);
 

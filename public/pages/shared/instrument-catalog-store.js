@@ -44,14 +44,19 @@
   // see server/db/repo.pg.mjs's assertInstrumentInCatalog()), so a picker adding a new code must
   // be able to `await` the add actually landing before it lets the user submit the entity that
   // depends on it. Rejects (never silently invents an id) when the code fails normalization.
-  function create(codeRaw, displayName) {
+  //
+  // Server-confirmed (`confirmFirst`): the code enters the list only once the server accepted it, so a
+  // refusal - the plan's instrument cap (403 PLAN_LIMIT_REACHED, see server/commercial/quota.mjs) above all -
+  // never leaves a phantom instrument in the picker or a Session's instrument dropdown, and the rejection
+  // carries error.code/details for the caller to explain. `options` ({ silent }) is passed to the replica.
+  function create(codeRaw, displayName, options) {
     var code = types.normalizeCode ? types.normalizeCode(codeRaw) : null;
     if (!code) return Promise.reject(new Error('INVALID_INSTRUMENT_CODE'));
     var existing = findByCode(code);
     if (existing) return Promise.resolve(existing);
     var record = normalize({ code: code, displayName: displayName });
     if (!replica()) return Promise.reject(new Error('NO_REPLICA'));
-    return replica().upsert(record);
+    return replica().upsert(record, Object.assign({ confirmFirst: true }, options));
   }
 
   window.TradeJournalInstrumentCatalogStore = {

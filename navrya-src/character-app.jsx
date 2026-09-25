@@ -362,7 +362,10 @@ function SessionsApp({ character, navryaCharacter, store }) {
           // resultContext() (openLiveSession() below), but the plain "New session" button never
           // did. store.createSession() resolves with the real created session (sessionsAdapter.js's
           // own return value), so this is the exact same navigation, just reached from the manual
-          // path too instead of only the voice/chat one.
+          // path too instead of only the voice/chat one. It resolves only once the SERVER has accepted
+          // the session and REJECTS when it refuses (e.g. 403 PLAN_LIMIT_REACHED): the .then below is
+          // then skipped, so a refused create never navigates into a session that does not exist, and the
+          // rejection reaches NewSessionDialog, which stays open and explains it.
           sessions={cards}
           onNewSession={(values) => Promise.resolve(store.createSession(values)).then((session) => {
             if (session && session.id) openLiveSession(session.id);
@@ -379,7 +382,9 @@ function SessionsApp({ character, navryaCharacter, store }) {
               sessionAccount: t.sessionAccount, sessionNoAccount: t.sessionNoAccount, instrument: t.instrument,
               liveSessionWarning: t.liveSessionWarning
             },
-            accountOptions: sessionAccountOptions
+            accountOptions: sessionAccountOptions,
+            // Shown next to a plan-limit refusal (NewSessionDialog); SessionLibrary closes the dialog first.
+            onUpgrade: () => store.setActiveId('subscription')
           }}
         />
       )}

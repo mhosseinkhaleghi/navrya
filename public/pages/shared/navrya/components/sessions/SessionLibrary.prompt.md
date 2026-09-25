@@ -10,5 +10,9 @@ The whole ledger module — heading + CTA, command toolbar, and the session fiel
 - Module padding 20px, R14 frame, `0 18px 38px black 34%` elevation.
 - Filtering and sorting are wired locally; pass `sessions` as an array of SessionCard props. Empty array renders SessionEmptyState.
 - The CTA only opens `NewSessionDialog`. `onNewSession(values)` fires when that dialog is confirmed — append the new session there, never on the button press.
+  It must return a Promise that resolves with the created session only once the server has accepted it and rejects when
+  it refuses (e.g. plan limit): the dialog closes on resolve only, so a refused create never navigates into, lists or
+  leaves behind a session. `newSessionDialogProps.onUpgrade` (optional) is the caller's "take me to the plans" action; the
+  library closes the dialog first.
 - On phone widths the toolbar becomes a one-column command stack and both grid and row cards use
   one readable column; no control may overflow or become icon-only.

@@ -4,6 +4,7 @@ import { ONCE_PER_USER_TYPES, DOMAIN_BY_TYPE, levelForXp } from './xp-rules.mjs'
 import { ACHIEVEMENTS } from './achievement-rules.mjs';
 import { evaluateGate } from './mastery-rules.mjs';
 import { getEffectiveXpConfig } from './xp-config.mjs';
+import { customerAiUsageByModel } from '../commercial/customer-billing-dto.mjs';
 import {
   evaluateNewAchievements, ensureDisciplineTimezone, shouldEvaluateNewAchievements, markNewAchievementsEvaluated,
   DISCIPLINE_MILESTONES, HEATMAP_MAX_DAYS
@@ -211,13 +212,14 @@ export function router(repo) {
     res.json(await repo.usageEvents.summaryForUser(req.currentUser.id));
   }));
 
-  // Real, per-model $ cost/charge for the signed-in user's own AI usage (task D.1) - gateway-
-  // origin only (aggregateByModelForUser's default), so this is authoritative real cost, never
-  // the client's own untrusted self-reported token counts from /me/usage above.
+  // The signed-in user's own AI usage per (provider, model): calls, tokens and the amount actually
+  // DEBITED from their wallet (the settled ledger movement). Customer-facing, so it carries no provider API
+  // cost, provider pricing, markup or reconciliation figure - see server/commercial/customer-billing-dto.mjs.
+  // Tokens/calls are gateway-recorded (never the client's own untrusted counts from /me/usage above).
   app.get('/me/ai-usage-by-model', asyncHandler(async (req, res) => {
     const days = req.query.days ? Math.min(365, Math.max(1, Number(req.query.days) || 30)) : null;
     const since = days ? new Date(Date.now() - days * 24 * 60 * 60 * 1000).toISOString() : undefined;
-    const byModel = await repo.usageEvents.aggregateByModelForUser(req.currentUser.id, { since });
+    const byModel = await customerAiUsageByModel(repo, req.currentUser.id, { since });
     res.json({ byModel, days });
   }));
 

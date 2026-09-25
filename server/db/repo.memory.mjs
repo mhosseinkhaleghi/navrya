@@ -38,7 +38,7 @@ export function createMemoryRepo() {
     authSessions: new Map(), externalIdentities: new Map(), securityEvents: new Map(), authTransactions: new Map(),
     commercialConfigOverrides: new Map(), commercialConfigVersions: new Map(), markupRules: new Map(),
     providerModelPricing: new Map(), walletAccounts: new Map(), walletLedger: new Map(), walletReservations: new Map(),
-    quotaLocks: new Map(), analysisSymbols: new Map(),
+    quotaLocks: new Map(),
     subscriptions: new Map(), paymentTransactions: new Map(), paymentEvents: new Map(), cryptoInvoices: new Map(),
     discountCodes: new Map(), discountRedemptions: new Map(),
     subscriptionBonusLots: new Map(), subscriptionBonusAllocations: new Map(),
@@ -2270,6 +2270,20 @@ export function createMemoryRepo() {
       return Array.from(state.walletLedger.values()).filter((e) => e.userId === userId && e.type === 'AI_SETTLEMENT')
         .sort((a, b) => (a.createdAt < b.createdAt ? 1 : -1)).slice(0, limit || 100).map(clone);
     },
+    // Mirrors repo.pg.mjs's aiDebitsByModelForUser(): the settled wallet movement (cash + promo) per (provider, model).
+    async aiDebitsByModelForUser(userId, { since } = {}) {
+      const buckets = new Map();
+      Array.from(state.walletLedger.values())
+        .filter((e) => e.userId === userId && e.type === 'AI_SETTLEMENT' && (!since || new Date(e.createdAt) >= new Date(since)))
+        .forEach((e) => {
+          const key = (e.provider || '') + '|' + (e.model || '');
+          const bucket = buckets.get(key) || { provider: e.provider || null, model: e.model || null, settlements: 0, walletDebitMicroUsd: 0 };
+          bucket.settlements += 1;
+          bucket.walletDebitMicroUsd += -((e.cashDeltaMicroUsd || 0) + (e.promoDeltaMicroUsd || 0));
+          buckets.set(key, bucket);
+        });
+      return Array.from(buckets.values());
+    },
     async recentLedger({ limit } = {}) {
       return Array.from(state.walletLedger.values()).sort((a, b) => (a.createdAt < b.createdAt ? 1 : -1)).slice(0, limit || 100).map(clone);
     },
@@ -2391,27 +2405,6 @@ export function createMemoryRepo() {
       } finally {
         release();
       }
-    }
-  };
-
-  const analysisSymbols = {
-    async upsert(userId, record) {
-      requireUser(userId);
-      if (!record || !record.id || !record.symbol) throw new ApiError(400, 'VALIDATION_FAILED');
-      const existing = state.analysisSymbols.get(record.id);
-      if (existing && existing.userId !== userId) throw new ApiError(403, 'NOT_ANALYSIS_SYMBOL_OWNER');
-      const stored = { id: record.id, userId, symbol: String(record.symbol).trim().toUpperCase(), createdAt: existing ? existing.createdAt : now() };
-      state.analysisSymbols.set(record.id, stored);
-      return clone(stored);
-    },
-    async listByUser(userId) {
-      return Array.from(state.analysisSymbols.values()).filter((s) => s.userId === userId).sort((a, b) => (a.createdAt < b.createdAt ? -1 : 1)).map(clone);
-    },
-    async remove(userId, id) {
-      const record = state.analysisSymbols.get(id);
-      if (!record) return;
-      if (record.userId !== userId) throw new ApiError(403, 'NOT_ANALYSIS_SYMBOL_OWNER');
-      state.analysisSymbols.delete(id);
     }
   };
 
@@ -2703,11 +2696,13 @@ export function createMemoryRepo() {
     async claimTxHash(id, txHash) {
       const record = state.cryptoInvoices.get(id);
       if (!record) return { ok: false, claimedByOtherInvoice: false };
-      if (record.txHash === txHash) return { ok: true, invoice: clone(record) };
+      // Case-insensitive: a transaction hash is the same transaction whatever its letter case.
+      const wanted = String(txHash).toLowerCase();
+      if (record.txHash && record.txHash.toLowerCase() === wanted) return { ok: true, invoice: clone(record) };
       if (record.txHash) return { ok: false, claimedByOtherInvoice: false };
-      const claimedElsewhere = Array.from(state.cryptoInvoices.values()).some((r) => r.id !== id && r.txHash === txHash);
+      const claimedElsewhere = Array.from(state.cryptoInvoices.values()).some((r) => r.id !== id && r.txHash && r.txHash.toLowerCase() === wanted);
       if (claimedElsewhere) return { ok: false, claimedByOtherInvoice: true };
-      record.txHash = txHash;
+      record.txHash = wanted;
       return { ok: true, invoice: clone(record) };
     },
     async updateStatus(id, status, { confirmationCount, confirmedAt, mismatchCreditedMicroUsd } = {}) {
@@ -3654,7 +3649,7 @@ export function createMemoryRepo() {
     xpEvents, achievements, xpConfig, sessionAiAnalysisCompletions, disciplineSettings, tradingSessions, patterns,
     strategies, analysisProfiles, analysisProfileEvents, analysisProfileSources, analysisProfileMessages, trades, accounts, instrumentCatalog, learnedCommands, mentalHealthProfile, aiChatHistory, companionState, sessionSignatures, userPreferences,
     authSessions, externalIdentities, securityEvents, authTransactions, health,
-    commercialConfig, markupRules, providerModelPricing, wallet, subscriptionBonus, quota, analysisSymbols,
+    commercialConfig, markupRules, providerModelPricing, wallet, subscriptionBonus, quota,
     subscriptions, paymentTransactions, paymentEvents, cryptoInvoices, discountCodes, discountRedemptions, bscPaymentSecrets, storageProducts, storageEntitlements, storageObjects,
     mediaAssets, mediaAssetLinks,
     conversationScenarios, conversationAudioAssets, conversationScenarioExposures,

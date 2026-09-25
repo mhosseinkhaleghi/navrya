@@ -517,6 +517,45 @@ test('the same on-chain tx hash can never confirm two different invoices (transa
   assert.deepEqual(afterSecond, afterFirst, 'no second credit from the reused hash');
 });
 
+// A transaction hash is case-insensitive on chain but was compared case-sensitively (regex allows A-F, the claim and the
+// UNIQUE index compare exact strings), so the SAME transfer submitted with different letter case was a "different" hash and
+// could pay a second invoice. It is normalized to lower case at the boundary and compared case-insensitively.
+test('the same transfer submitted with a different letter case can never pay a second invoice, and hashes are stored and looked up in lower case', async () => {
+  await setBscConfig(repo);
+  mockRpc({ chainId: 56 });
+  const { user, headers } = await createUserAndCookie('Hash Case Variant');
+  const create = async () => (await (await fetch(`${baseUrl}/api/sync/wallet/topup-request`, { method: 'POST', headers: { ...headers, 'Content-Type': 'application/json' }, body: JSON.stringify({ amountUsd: 10 }) })).json()).invoiceId;
+  const firstInvoiceId = await create();
+  const secondInvoiceId = await create();
+  const lower = '0x' + 'a'.repeat(60) + 'b1c2';
+  const upper = '0x' + 'A'.repeat(60) + 'B1C2';
+
+  const lookedUp = [];
+  globalThis.fetch = async (url, options) => {
+    if (String(url) !== RPC_URL_SENTINEL) return originalFetch(url, options);
+    const request = JSON.parse(options.body);
+    if (request.method === 'eth_chainId') return { ok: true, json: async () => ({ result: '0x38' }) };
+    if (request.method === 'eth_getTransactionReceipt') { lookedUp.push(...request.params); return { ok: true, json: async () => ({ result: makeReceipt({ blockNumber: 100, amount: 10n * 10n ** 18n }) }) }; }
+    if (request.method === 'eth_blockNumber') return { ok: true, json: async () => ({ result: '0x69' }) };
+    throw new Error('unexpected RPC method in test: ' + request.method);
+  };
+  const check = (invoiceId, txHash) => fetch(`${baseUrl}/api/sync/wallet/invoices/${invoiceId}/check`, { method: 'POST', headers: { ...headers, 'Content-Type': 'application/json' }, body: JSON.stringify({ txHash }) }).then((response) => response.json());
+
+  const first = await check(firstInvoiceId, upper);
+  assert.equal(first.status, 'confirmed');
+  assert.equal(first.invoice.txHash, lower, 'stored canonically, in lower case');
+  assert.deepEqual(lookedUp, [lower], 'and looked up on chain in lower case');
+  const afterFirst = await repo.wallet.getAccount(user.id);
+
+  for (const variant of [lower, upper, '0x' + 'a'.repeat(60) + 'B1c2']) {
+    const second = await check(secondInvoiceId, variant);
+    assert.equal(second.status, 'pending', 'a case variant of a claimed hash must not confirm another invoice');
+    assert.equal(second.reason, 'TX_HASH_ALREADY_CLAIMED');
+  }
+  assert.deepEqual(await repo.wallet.getAccount(user.id), afterFirst, 'no second credit from any case variant of the same transfer');
+  assert.equal((await repo.cryptoInvoices.get(secondInvoiceId)).txHash, null, 'the second invoice never holds the hash');
+});
+
 // Sanity check that the fix does not break the LEGITIMATE version of this scenario: two distinct
 // invoices for the same amount, each paid by its own genuinely distinct on-chain transaction, must
 // both still confirm independently and correctly.
