@@ -11,6 +11,38 @@ import { VOICE_STATES } from './aiVoiceRealtime.js';
 import { createGeminiLiveSession } from './geminiLiveVoice.js';
 import { createGptLiveSession } from './gptLiveVoice.js';
 import { CHARACTERS } from './characters.js';
+import { stringsFor } from './i18n.js';
+import { assetUrl } from '../public/pages/shared/navrya/components/core/AssetBase.jsx';
+import { workflowReceipts, receiptEntry } from './chatDockReceipts.js';
+
+function languageOf(i18n) { return i18n && typeof i18n.language === 'function' ? i18n.language() : 'en'; }
+
+// Companion capsule redesign: the dock's identity is the active character - its own localized
+// title (the same charTitle the dashboard header shows) and its default portrait asset.
+function companionFor(i18n, navryaCharacter) {
+  const titles = stringsFor(languageOf(i18n)).charTitle || {};
+  return {
+    name: titles[navryaCharacter] || '',
+    portrait: navryaCharacter ? assetUrl('assets/portraits/portrait-' + navryaCharacter + '.webp') : ''
+  };
+}
+
+// Lookups chatDockReceipts.js needs: the sidebar's own nav labels, and a form field's real rendered
+// label from the process registry's interview metadata (null when that form has none yet).
+function receiptOptions(i18n) {
+  const strings = stringsFor(languageOf(i18n));
+  const registry = typeof window !== 'undefined' ? window.TradeJournalAIProcessRegistry : null;
+  return {
+    navLabel: (key) => (strings && strings[key]) || null,
+    fieldLabel: (processId, path) => {
+      if (!processId || !registry || typeof registry.interviewFieldMeta !== 'function') return null;
+      try {
+        const meta = registry.interviewFieldMeta(processId, path);
+        return meta && meta.label ? String(meta.label) : null;
+      } catch (_) { return null; }
+    }
+  };
+}
 
 function fieldLabel(tradeI18n, key) { return tradeI18n ? tradeI18n.t(key) : key; }
 function fieldNumber(tradeI18n, value) { return tradeI18n ? tradeI18n.number(value, { maximumFractionDigits: 4 }) : String(value); }
@@ -631,16 +663,20 @@ function ChatDockApp({ i18n, core, settingsStore, tradeI18n, navryaCharacter, vo
         if (autoApplyVoiceSuggestions) {
           rawSuggestions.forEach((s) => { try { core.applySuggestion(result.activeProcess.id, s.path, s.value, s.mode); } catch (_) {} });
         }
+        const receipts = receiptOptions(i18n);
+        const activeProcessId = result.activeProcess ? result.activeProcess.id : null;
         setPopover({
           open: true, state: 'answer', messages: nextTranscript,
-          suggestions: autoApplyVoiceSuggestions ? [] : rawSuggestions.map((s, i) => ({ id: s.id || 'sugg-' + i, ...s })),
+          suggestions: autoApplyVoiceSuggestions ? [] : rawSuggestions.map((s, i) => ({ id: s.id || 'sugg-' + i, label: receipts.fieldLabel(activeProcessId, s.path), ...s })),
           activeProcessId: result.activeProcess ? result.activeProcess.id : null,
           // result.kind === 'workflow' (an AI-discovered/in-progress action, e.g. session.create):
           // fields it already applied live are shown as plain meta chips - reusing the popover's
           // existing meta row rather than a new dedicated "AI action progress" component. A voice
           // turn's own auto-applied suggestions (above) are appended here for the same reason.
-          meta: (result.workflow ? Object.keys(result.workflow.known || {}).map((path) => `${path}: ${result.workflow.known[path]}`) : [])
-            .concat(autoApplyVoiceSuggestions ? rawSuggestions.map((s) => `${s.path}: ${s.value}`) : []),
+          // Companion capsule redesign: worded as receipts (chatDockReceipts.js) - the page's own
+          // nav label or the field's own rendered label - instead of raw "domainId: dashboard".
+          meta: workflowReceipts(result.workflow, receipts)
+            .concat(autoApplyVoiceSuggestions ? rawSuggestions.map((s) => receiptEntry(activeProcessId, s.path, s.value, receipts)) : []),
           // NAVRYA chat dock redesign: real "a Journey C proactive rule was applied to this reply"
           // banner - only ever true when chat-dock-core.js genuinely resolved a proactive
           // confirmation this turn (ai-proactive-engine.js's own real ruleId), never fabricated.
@@ -1422,11 +1458,14 @@ function ChatDockApp({ i18n, core, settingsStore, tradeI18n, navryaCharacter, vo
     )
     : null;
 
+  const companion = companionFor(i18n, navryaCharacter);
+
   return (
     <div data-character={navryaCharacter} dir={rtl ? 'rtl' : 'ltr'}>
       <input ref={fileInputRef} type="file" accept="image/*" hidden onChange={onFileChosen} />
       <ChatDock
         dir={rtl ? 'rtl' : 'ltr'}
+        companion={companion} surfaceJoined={!!(popover && popover.open)}
         placeholder={i18n.t('aiDockPlaceholder')}
         sendLabel={i18n.t('aiDockSend')}
         voiceState={voiceState} voiceMuted={voiceMuted} voicePermissionDenied={voicePermissionDenied}
@@ -1482,6 +1521,7 @@ function ChatDockApp({ i18n, core, settingsStore, tradeI18n, navryaCharacter, vo
         {popover && (
           <ChatResponsePopover
             open={popover.open} state={popover.state}
+            companion={companion} joined statusLabel={i18n.t('aiDockStatusReady')}
             title={popover.title || i18n.t('aiDockLauncherLabel')}
             prompt={popover.prompt} lines={popover.lines || []} messages={popover.messages}
             userLabel={i18n.t('aiDockYou')} assistantLabel={i18n.t('aiDockAssistant')}
@@ -1508,7 +1548,8 @@ function ChatDockApp({ i18n, core, settingsStore, tradeI18n, navryaCharacter, vo
             feedbackLabels={{
               prompt: i18n.t('aiChatFeedbackPrompt'), correct: i18n.t('aiChatFeedbackCorrect'),
               wrongAction: i18n.t('aiChatFeedbackWrongAction'), wrongTarget: i18n.t('aiChatFeedbackWrongTargetValue'),
-              rememberThis: i18n.t('aiChatFeedbackRememberThis'), dismiss: i18n.t('aiChatFeedbackDismiss')
+              rememberThis: i18n.t('aiChatFeedbackRememberThis'), dismiss: i18n.t('aiChatFeedbackDismiss'),
+              wrong: i18n.t('aiChatFeedbackWrong')
             }}
             onFeedbackCorrect={() => giveChatFeedback('correct', popover.feedbackReceiptId)}
             onFeedbackWrongAction={() => giveChatFeedback('wrongAction', popover.feedbackReceiptId)}

@@ -1,11 +1,13 @@
 import React from 'react';
 import { Icon } from '../core/Icon.jsx';
 
-export function DockButton({ icon, label, tone = 'ghost', active = false, disabled = false, danger = false, onClick, className }) {
+// `size`/`radius` are optional (default: the 36px round button every existing caller uses) - the
+// capsule redesign's primary Send/Voice button is 44px with a 14px corner.
+export function DockButton({ icon, label, tone = 'ghost', active = false, disabled = false, danger = false, onClick, className, size = 36, radius }) {
   const [hover, setHover] = React.useState(false);
   const primary = tone === 'primary';
   const base = {
-    width: 36, height: 36, flex: 'none', borderRadius: 'var(--radius-pill)', display: 'grid', placeItems: 'center',
+    width: size, height: size, flex: 'none', borderRadius: radius != null ? radius : 'var(--radius-pill)', display: 'grid', placeItems: 'center',
     padding: 0, cursor: disabled ? 'default' : 'pointer',
     transition: 'background 160ms var(--ease-out),border-color 160ms var(--ease-out),color 160ms var(--ease-out),transform 160ms var(--ease-out)',
     transform: hover && !disabled ? 'translateY(-1px)' : 'translateY(0)'

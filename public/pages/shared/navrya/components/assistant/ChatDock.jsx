@@ -1,8 +1,12 @@
 import React from 'react';
 import { useAssistantMotion } from './motion.js';
 import { DockButton } from './DockButton.jsx';
-import { ModelSwitcher, ModelMascot } from './ModelSwitcher.jsx';
+import { ModelSwitcher } from './ModelSwitcher.jsx';
 import { VoiceConsole, VoiceMiniBar } from './VoiceConsole.jsx';
+import { CompanionSigil } from './CompanionSigil.jsx';
+import {
+  computeSideLane, sameLane, sideReservePx, sideForDir, isLaneViewport, isLaneDialog, SIDECAR_EDGE_PX
+} from './dockSideLane.js';
 
 /* Bottom-centre command bar: add, one line of intent, mic, send. Always fixed to the viewport -
    this is the single global assistant entry point for every character dashboard, not a
@@ -56,7 +60,20 @@ import { VoiceConsole, VoiceMiniBar } from './VoiceConsole.jsx';
    is what returns here). The row's own primary button is the real dual-purpose control the design
    specifies ("two jobs, one button"): empty text -> starts Voice, typed text -> Send, icon AND
    onClick both switch together (never just the icon - see ai-voice-chatdock-ux.test.mjs's own
-   "no decoy button" guard, which this preserves under its new shape). */
+   "no decoy button" guard, which this preserves under its new shape).
+
+   Companion capsule redesign (artbook plates III/IV/VII): three changes on top of all of the above,
+   none of which touches the z-index policy or the reserved-bottom contract.
+   - One body: while a reply is showing (`surfaceJoined`), the reply panel and this row meet flush
+     (no gap, the panel's bottom corners and this row's top corners squared off) so the two
+     separately-stacked elements read as one capsule instead of two floating boxes.
+   - The engine's floating mascot beside the row is gone: the row starts with the character's own
+     portrait (CompanionSigil) - the character is the companion, the engine is a label.
+   - Beside the modal: when a real dialog is open on a wide viewport, both elements move into a
+     lane beside the dialog (dockSideLane.js) at the SAME z-index 150, because the lane is outside
+     the dialog's rect by construction - the reason the reply normally stays at 70 (it must not
+     cover the dialog's own fields) cannot apply there. The lane is only used when it measurably
+     clears the dialog; otherwise everything stays exactly where it was before. */
 var POPOVER_SHORT_REPLY_ALLOWANCE_PX = 130;
 // NAVRYA chat dock redesign (NavryaChatDock.dc.html): in the design, the header/stream and the
 // input row are ONE continuous rounded-rect panel with no visible seam. This dock keeps them as
@@ -70,6 +87,12 @@ var POPOVER_SHORT_REPLY_ALLOWANCE_PX = 130;
 // stacked surfaces' own rounded corners visually pinching into each other at the seam (both keep
 // all four corners rounded - see ChatResponsePopover.jsx's/this file's own --radius-14 match).
 var PANEL_TO_DOCK_GAP_PX = 2;
+// Companion capsule redesign: a reply panel rendered with `joined` (ChatResponsePopover) has no
+// bottom corners or border of its own - it sits directly on this row with no gap at all. The 2px
+// gap above still applies to the unjoined surfaces (history dropdown, companion card).
+var JOINED_GAP_PX = 0;
+var DOCK_BOTTOM_PX = 24;
+var CAPSULE_RADIUS_PX = 20;
 
 // Ties each real Journey E VOICE_STATES value (navrya-src/aiVoiceRealtime.js) to its dot colour -
 // the single source of truth VoiceConsole/VoiceMiniBar's status dot reads from, so what a user
@@ -136,8 +159,12 @@ export function ChatDock({
   // chatDockView.jsx uses this to gate the first-run Companion welcome card behind an explicit
   // open gesture instead of showing it the instant the dock merely mounts.
   onInputFocus,
+  // Companion capsule redesign: `companion` is { name, portrait } for the active character (see
+  // chatDockView.jsx). `surfaceJoined` is true only while a real reply panel is showing, so it can
+  // meet this row flush. `sideLaneEnabled` lets a caller opt out of the beside-the-modal lane.
+  companion, surfaceJoined = false, sideLaneEnabled = true,
   busy = false, width = 680, hint,
-  models, model, onModelChange, mascot = true, children,
+  models, model, onModelChange, children,
   dir = 'ltr',
   sendLabel = 'Send',
   style, ...rest
@@ -157,7 +184,92 @@ export function ChatDock({
 
   const list = models && models.length ? models : null;
   const active = list ? (list.find((m) => m.id === model) || list[0]) : null;
-  const withMascot = !!(active && mascot);
+
+  // Beside-the-modal lane (see the top-of-file comment and dockSideLane.js). Recomputed from the
+  // real DOM whenever nodes are added/removed (a dialog mounting or unmounting), on viewport
+  // resize, and whenever the chosen dialog's own box changes size. Only ever setState()s when the
+  // lane genuinely changes, so the dock's own re-renders can never loop this.
+  const dockRef = React.useRef(null);
+  const [sideLane, setSideLane] = React.useState(null);
+  React.useEffect(() => {
+    if (!sideLaneEnabled || typeof window === 'undefined' || typeof document === 'undefined') return undefined;
+    const root = document.documentElement;
+    const side = sideForDir(dir);
+    // A dialog that still overlaps the lane after the reserve was published (a hand-rolled dialog
+    // that does not read the reserve) is never retried, so it can never flicker between placements.
+    const refused = typeof WeakSet !== 'undefined' ? new WeakSet() : null;
+    let frame = 0;
+    let disposed = false;
+    let observedDialog = null;
+    let dialogObserver = null;
+
+    function publish(on) {
+      const px = on ? sideReservePx() + 'px' : '0px';
+      root.style.setProperty('--navrya-chat-dock-side-' + side, px);
+      root.style.setProperty('--navrya-chat-dock-side-' + (side === 'left' ? 'right' : 'left'), '0px');
+    }
+    function watch(el) {
+      if (el === observedDialog) return;
+      if (dialogObserver) dialogObserver.disconnect();
+      observedDialog = el;
+      dialogObserver = null;
+      if (el && typeof ResizeObserver !== 'undefined') {
+        dialogObserver = new ResizeObserver(schedule);
+        dialogObserver.observe(el);
+      }
+    }
+    function findDialog() {
+      const nodes = document.querySelectorAll('[role="dialog"][aria-modal="true"]');
+      let best = null;
+      let bestArea = 0;
+      for (let i = 0; i < nodes.length; i += 1) {
+        const el = nodes[i];
+        if ((dockRef.current && dockRef.current.contains(el)) || (refused && refused.has(el))) continue;
+        const rect = el.getBoundingClientRect();
+        if (!isLaneDialog(rect)) continue;
+        if (rect.width * rect.height > bestArea) { best = el; bestArea = rect.width * rect.height; }
+      }
+      return best;
+    }
+    function compute() {
+      frame = 0;
+      if (disposed) return;
+      const vw = window.innerWidth;
+      const vh = window.innerHeight;
+      const dialog = isLaneViewport(vw) ? findDialog() : null;
+      watch(dialog);
+      if (!dialog) { publish(false); setSideLane((prev) => (prev ? null : prev)); return; }
+      // Publishing the reserve first lets a Modal.jsx dialog re-centre into the rest of the
+      // viewport; getBoundingClientRect() then reads its real post-reserve position synchronously.
+      publish(true);
+      const lane = computeSideLane({ viewportWidth: vw, viewportHeight: vh, dir, dialogRect: dialog.getBoundingClientRect() });
+      if (!lane) {
+        if (refused) refused.add(dialog);
+        publish(false);
+        watch(null);
+      }
+      setSideLane((prev) => (sameLane(prev, lane) ? prev : lane));
+    }
+    function schedule() {
+      if (!frame && !disposed) frame = window.requestAnimationFrame(compute);
+    }
+
+    const mutations = typeof MutationObserver !== 'undefined' ? new MutationObserver(schedule) : null;
+    if (mutations && document.body) mutations.observe(document.body, { childList: true, subtree: true });
+    window.addEventListener('resize', schedule);
+    schedule();
+    return () => {
+      disposed = true;
+      if (frame) window.cancelAnimationFrame(frame);
+      if (mutations) mutations.disconnect();
+      if (dialogObserver) dialogObserver.disconnect();
+      window.removeEventListener('resize', schedule);
+      root.style.removeProperty('--navrya-chat-dock-side-left');
+      root.style.removeProperty('--navrya-chat-dock-side-right');
+      setSideLane(null);
+    };
+  }, [sideLaneEnabled, dir]);
+  const inLane = !!sideLane;
 
   // Minimized is purely local UI state for the current session - always starts expanded, and
   // resets the instant the session actually ends (never stays stuck minimized into the next one).
@@ -232,7 +344,7 @@ export function ChatDock({
       window.removeEventListener('resize', measure);
       window.removeEventListener('orientationchange', measure);
     };
-  }, [dir]);
+  }, [dir, inLane]);
 
   // Publishes the dock's own real reserved bottom footprint - its own `bottom` margin + the row's
   // real height + the popover's own gap AND typical-short-reply allowance (see the top-of-file
@@ -251,14 +363,29 @@ export function ChatDock({
   const phaseLabel = voicePhaseLabel(voiceState, voiceMuted, voiceErrorLabel, voiceLabels);
   const phaseCaption = voicePhaseCaption(voiceState, voiceMuted, voicePermissionDenied, voiceErrorLabel, voiceLabels);
 
+  // Where the row sits: bottom-centre as always, or the beside-the-modal lane.
+  const dockBottom = inLane ? sideLane.bottom : DOCK_BOTTOM_PX;
+  const surfaceGap = surfaceJoined ? JOINED_GAP_PX : PANEL_TO_DOCK_GAP_PX;
+  const hasSurface = React.Children.toArray(children).length > 0;
+  const dockPlacement = inLane
+    ? { position: 'fixed', [sideLane.side]: SIDECAR_EDGE_PX, bottom: sideLane.bottom, width: sideLane.width, maxWidth: sideLane.width, margin: 0 }
+    : { position: 'fixed', left: 16, right: 16, bottom: DOCK_BOTTOM_PX, margin: '0 auto', maxWidth: width };
+  // The row's own corners: squared on top while a joined reply panel sits on it.
+  const rowRadius = surfaceJoined ? `0 0 ${CAPSULE_RADIUS_PX}px ${CAPSULE_RADIUS_PX}px` : CAPSULE_RADIUS_PX;
+  const sigilState = busy ? 'thinking' : 'idle';
+
   return (
     <React.Fragment>
-      {children && (
+      {hasSurface && (
         <div
           data-navrya-assistant="response-surface"
           style={{
-            position: 'fixed', bottom: 24 + rowHeight + PANEL_TO_DOCK_GAP_PX, boxSizing: 'border-box',
-            zIndex: 70, pointerEvents: 'none',
+            position: 'fixed', bottom: dockBottom + rowHeight + surfaceGap, boxSizing: 'border-box',
+            // 70 below modals at the bottom (see the top-of-file comment); 150 in the lane, which
+            // is outside the dialog's rect by construction, so there is nothing of the dialog's to
+            // cover. The lane also caps the height so the reply never rises above the dialog.
+            zIndex: inLane ? 150 : 70, pointerEvents: 'none',
+            ...(inLane ? { maxHeight: Math.max(0, sideLane.height - rowHeight), overflowY: 'auto' } : null),
             // fix/voice-mode-turn-ux (Part E): once the real dock row rect has been measured, this
             // surface is pinned to those EXACT physical left/width values - its left/right edges
             // then match the real, visible dock input surface within, in practice, well under 1px
@@ -275,42 +402,42 @@ export function ChatDock({
         </div>
       )}
       <div
-        data-navrya-assistant="dock" dir={dir}
+        ref={dockRef}
+        data-navrya-assistant="dock" data-navrya-dock-layout={inLane ? 'side' : 'bottom'} dir={dir}
         style={{
-          position: 'fixed', left: 16, right: 16, bottom: 24, margin: '0 auto', zIndex: 150,
-          maxWidth: width + (withMascot ? 66 : 0),
+          ...dockPlacement, zIndex: 150,
           display: 'flex', alignItems: 'flex-end', gap: 14, ...style
         }}
         {...rest}
       >
-        {/* Purely decorative (no onClick of its own) - never allowed to sit in front of and
-            swallow a click meant for whatever's underneath, e.g. a tall modal's own footer
-            button in the same bottom-of-viewport band this raised z-index now shares with it. */}
-        {withMascot && <span className="navrya-dock-mascot" style={{ flex: 'none', paddingBottom: 2, pointerEvents: 'none' }}><ModelMascot model={active} size={52} /></span>}
-
         <div ref={rowRef} data-navrya-assistant="dock-surface" style={{ flex: 1, minWidth: 0 }}>
           {idle && (
             <div
               data-navrya-chat-dock=""
               style={{
-                display: 'flex', alignItems: 'center', gap: 10, padding: '9px 10px 9px 12px', boxSizing: 'border-box',
-                // NAVRYA chat dock redesign: matches the reply panel's own corner radius
-                // (ChatResponsePopover.jsx) instead of the old fully-round pill shape, so the two
-                // stacked surfaces (see PANEL_TO_DOCK_GAP_PX above) read as one connected unit.
-                borderRadius: 'var(--radius-14)',
+                display: 'flex', alignItems: 'center', gap: 8, padding: '10px 10px 10px 12px', minHeight: 64, boxSizing: 'border-box',
+                // Companion capsule redesign: one opaque body with the reply panel above it (no
+                // see-through blur, so page content never bleeds through), squared top corners
+                // while joined, and the joint drawn as a hairline instead of a second gold edge.
+                borderRadius: rowRadius,
                 border: '1px solid ' + (focused ? 'var(--border-gold-strong)' : 'var(--border-gold)'),
-                background: 'linear-gradient(180deg,color-mix(in srgb,var(--char-active-surface) 46%,rgba(17,27,28,.94)),color-mix(in srgb,var(--char-active-surface) 26%,rgba(7,11,15,.96)))',
-                backdropFilter: 'blur(12px)',
+                borderTop: surfaceJoined ? '1px solid var(--border-hairline)' : undefined,
+                background: surfaceJoined
+                  ? '#0A0D12'
+                  : 'linear-gradient(180deg,color-mix(in srgb,var(--char-accent) 11%,#0B0E14) 0%,#0B0E14 60%,#0A0D12 100%)',
                 boxShadow: focused
-                  ? 'var(--shadow-panel),var(--glow-soft),var(--shadow-inset-hairline)'
-                  : 'var(--shadow-panel),var(--shadow-inset-hairline)',
+                  ? '0 26px 64px rgba(0,0,0,.6),var(--glow-soft),var(--shadow-inset-hairline)'
+                  : '0 26px 64px rgba(0,0,0,.6),0 0 40px var(--char-glow),var(--shadow-inset-hairline)',
                 transition: 'border-color 200ms var(--ease-out),box-shadow 200ms var(--ease-out),background 200ms var(--ease-out)'
               }}
             >
-              <DockButton className="navrya-dock-secondary-action" icon="plus" label={addLabel} active={addActive} onClick={onAdd} />
-              {onNewChat && <DockButton className="navrya-dock-secondary-action" icon="square-pen" label={newChatLabel} onClick={onNewChat} />}
-              {onHistory && <DockButton className="navrya-dock-secondary-action" icon="history" label={historyLabel} active={historyActive} onClick={onHistory} />}
-              {list && (
+              {/* The character's own portrait opens the row. Purely decorative (no onClick), and
+                  hidden on phones by the same .navrya-dock-mascot rule the old engine mascot used. */}
+              <CompanionSigil className="navrya-dock-mascot" portrait={companion && companion.portrait} size={40} state={sigilState} />
+              {!inLane && <DockButton className="navrya-dock-secondary-action" icon="plus" label={addLabel} active={addActive} onClick={onAdd} />}
+              {!inLane && onNewChat && <DockButton className="navrya-dock-secondary-action" icon="square-pen" label={newChatLabel} onClick={onNewChat} />}
+              {!inLane && onHistory && <DockButton className="navrya-dock-secondary-action" icon="history" label={historyLabel} active={historyActive} onClick={onHistory} />}
+              {list && !inLane && (
                 <React.Fragment>
                   <span aria-hidden="true" style={{ width: 1, height: 22, flex: 'none', background: 'var(--border-hairline)' }} />
                   <ModelSwitcher className="navrya-dock-model-switcher" models={list} value={active.id} onChange={onModelChange} />
@@ -326,33 +453,32 @@ export function ChatDock({
                   onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); submit(); } }}
                   aria-label={placeholder} disabled={busy}
                   style={{
-                    width: '100%', minWidth: 0, border: 0, background: 'transparent', padding: 0,
-                    font: 'var(--type-body)', color: 'var(--text-primary)', caretColor: 'var(--char-accent)'
+                    width: '100%', minWidth: 0, height: 44, border: 0, background: 'transparent', padding: '0 4px',
+                    font: 'var(--type-body)', fontSize: 14.5, color: 'var(--text-primary)', caretColor: 'var(--char-accent)'
                   }}
                 />
               </div>
-              {hint && (
+              {hint && !inLane && (
                 <span style={{
                   font: 'var(--type-caption)', letterSpacing: 'var(--tracking-label)', textTransform: 'uppercase',
                   color: 'var(--text-muted)', whiteSpace: 'nowrap', flex: 'none'
                 }}>{hint}</span>
               )}
               <div style={{ display: 'flex', alignItems: 'center', gap: 6, flex: 'none' }}>
-                {onToggleTherapist && (
+                {onToggleTherapist && !inLane && (
                   <DockButton className="navrya-dock-therapist" icon="psychology" label={therapistLabel} active={therapistActive} onClick={onToggleTherapist} />
                 )}
-                {/* NAVRYA chat dock redesign (NavryaChatDock.dc.html): a dedicated, always-
-                    available mic shortcut, distinct from the dual-purpose end button below it -
-                    that one only starts Voice when the input is already empty (typed text takes
-                    priority as Send); this one switches to Voice immediately regardless of
-                    whatever is currently typed, mirroring the design's own separate mic control
-                    rather than a decorative duplicate of the same action. */}
-                {onVoiceToggle && (
+                {/* A separate Voice control only while there is typed text: the primary button
+                    below is then Send, so this is the one way to go to Voice without deleting the
+                    text. With an empty input the primary button already IS Voice - showing a
+                    second, identical Voice button next to it (the old always-on mic) was the
+                    duplicate the capsule redesign removes ("one job per button"). */}
+                {onVoiceToggle && showSend && (
                   <DockButton className="navrya-dock-mic" icon="mic" label={voiceLabels.start} disabled={busy} onClick={onVoiceToggle} />
                 )}
                 <DockButton
                   icon={showSend ? 'arrow-up' : 'audio-lines'}
-                  tone="primary" disabled={showSend && !ready}
+                  tone="primary" size={44} radius={14} disabled={showSend && !ready}
                   className="navrya-dock-primary-action" label={showSend ? sendLabel : voiceLabels.start}
                   onClick={mainAction}
                 />
@@ -369,6 +495,7 @@ export function ChatDock({
           )}
           {!idle && !voiceMinimized && (
             <VoiceConsole
+              companion={companion} joinedTop={surfaceJoined}
               voiceState={voiceState} voiceMuted={voiceMuted} model={active} elapsedSeconds={voiceElapsed}
               dotColor={dotColor} phaseLabel={phaseLabel} phaseCaption={phaseCaption}
               voicePermissionDenied={voicePermissionDenied} voiceHeardText={voiceHeardText} voiceReplyCaption={voiceReplyCaption}

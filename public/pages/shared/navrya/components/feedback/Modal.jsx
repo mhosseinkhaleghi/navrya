@@ -18,7 +18,13 @@ import { Icon } from '../core/Icon.jsx';
    node instead of the button. Reserving the space means the dialog's own maxHeight simply never
    extends into that band in the first place, which - as a second, geometric effect - is also what
    lets the ChatDock's reply popover stay visible for a short/typical workflow question even while
-   this modal is open, without needing to reorder z-indices at all (see ChatDock.jsx). */
+   this modal is open, without needing to reorder z-indices at all (see ChatDock.jsx).
+
+   Companion capsule redesign: the same idea on the side. On a wide viewport ChatDock moves beside
+   an open dialog (dockSideLane.js) and publishes that lane as --navrya-chat-dock-side-left/-right
+   (0 otherwise); reserving it here re-centres the dialog into the rest of the viewport so the
+   dock never sits over the dialog. Physical left/right, not logical, because the dock decides the
+   side from its own `dir`. Both default to 0px, a no-op on pages without a ChatDock. */
 export function Modal({
   open = true, title, icon, eyebrow, onClose, footer, width = 860, children, style, ...rest
 }) {
@@ -33,7 +39,7 @@ export function Modal({
     <div
       style={{
         position: 'fixed', inset: 0, zIndex: 100, display: 'grid', placeItems: 'center',
-        padding: '24px 24px calc(24px + var(--navrya-chat-dock-reserved, 0px)) 24px',
+        padding: '24px calc(24px + var(--navrya-chat-dock-side-right, 0px)) calc(24px + var(--navrya-chat-dock-reserved, 0px)) calc(24px + var(--navrya-chat-dock-side-left, 0px))',
         background: 'var(--scrim)', backdropFilter: 'blur(3px)'
       }}
       onMouseDown={(e) => { if (e.target === e.currentTarget && onClose) onClose(); }}

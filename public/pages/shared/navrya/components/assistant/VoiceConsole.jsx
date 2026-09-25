@@ -2,6 +2,7 @@ import React from 'react';
 import { Icon } from '../core/Icon.jsx';
 import { ModelGlyph } from './ModelSwitcher.jsx';
 import { useAssistantMotion } from './motion.js';
+import { CompanionSigil, EngineChip } from './CompanionSigil.jsx';
 
 /* Voice Mode console (Journey E UI pass, matches the NavryaVoiceMode.dc.html design file).
    Replaces the plain ChatDock row for the whole lifetime of a voice session - the mic button's
@@ -19,10 +20,15 @@ import { useAssistantMotion } from './motion.js';
      fake affordance (this codebase's own "no decoy buttons" rule - see ai-voice-chatdock-ux.test.mjs). */
 
 const CONNECT_PHASES = { requesting_permission: 1, connecting: 1, reconnecting: 1 };
-const PHASE_CODE = {
-  requesting_permission: 'CONNECTING', connecting: 'CONNECTING', reconnecting: 'RECONNECTING',
-  listening: 'LISTENING', user_speaking: 'SPEAKING', interrupted: 'LISTENING',
-  processing: 'THINKING', assistant_speaking: 'REPLYING', error: 'VOICE ERROR'
+// Companion capsule redesign: the header no longer shows an English phase code (CONNECTING /
+// THINKING / MIC DENIED) next to "<ENGINE> · VOICE" - the localized phase label already sits large
+// in the console body, and mic denial has its own DeniedCard. The header instead carries the same
+// identity as the reply panel: the character's portrait (its ring reflects the phase), its name,
+// and the engine as a small label.
+const SIGIL_STATE = {
+  requesting_permission: 'thinking', connecting: 'thinking', reconnecting: 'thinking', processing: 'thinking',
+  listening: 'listening', user_speaking: 'listening', interrupted: 'listening',
+  assistant_speaking: 'speaking'
 };
 
 const VOICE_CONSOLE_CSS = `
@@ -228,7 +234,10 @@ export function VoiceConsole({
   // single value that only ever appears once a turn is fully finalized.
   voiceSupportsLiveCaption = false,
   onVoiceToggle, onVoiceEnd, onVoiceMuteToggle, onVoiceInterrupt, onVoiceEndMessage, onMinimize,
-  getVoiceMediaStream, strings
+  getVoiceMediaStream, strings,
+  // Companion capsule redesign: `companion` ({ name, portrait }) is the header identity;
+  // `joinedTop` squares the top corners when a reply panel sits flush on top (ChatDock).
+  companion, joinedTop = false
 }) {
   useAssistantMotion();
   useVoiceConsoleMotion();
@@ -288,16 +297,15 @@ export function VoiceConsole({
     <div
       data-navrya-assistant="voice-console" className="navrya-voice-console"
       style={{
-        position: 'relative', borderRadius: 'var(--radius-14)', border: '1px solid var(--border-gold-strong)',
-        background: 'linear-gradient(180deg,rgba(17,27,28,.97),rgba(7,11,15,.98))',
-        boxShadow: 'var(--shadow-panel),var(--glow-soft)', overflow: 'hidden',
+        position: 'relative', borderRadius: joinedTop ? '0 0 20px 20px' : 20, border: '1px solid var(--border-gold)',
+        borderTop: joinedTop ? '1px solid var(--border-hairline)' : undefined,
+        background: joinedTop ? '#0A0D12' : 'linear-gradient(180deg,color-mix(in srgb,var(--char-accent) 11%,#0B0E14) 0%,#0B0E14 38%,#0A0D12 100%)',
+        boxShadow: '0 26px 64px rgba(0,0,0,.6),0 0 40px var(--char-glow)', overflow: 'hidden',
         animation: 'navrya-pop-in 220ms var(--ease-out) both'
       }}
     >
-      <span aria-hidden="true" style={{ position: 'absolute', top: 5, insetInlineEnd: 5, width: 14, height: 14, borderTop: '1px solid color-mix(in srgb,var(--char-accent) 80%,transparent)', borderInlineEnd: '1px solid color-mix(in srgb,var(--char-accent) 80%,transparent)' }} />
-      <span aria-hidden="true" style={{ position: 'absolute', top: 5, insetInlineStart: 5, width: 14, height: 14, borderTop: '1px solid color-mix(in srgb,var(--char-accent) 80%,transparent)', borderInlineStart: '1px solid color-mix(in srgb,var(--char-accent) 80%,transparent)' }} />
-      <span aria-hidden="true" style={{ position: 'absolute', bottom: 5, insetInlineEnd: 5, width: 14, height: 14, borderBottom: '1px solid color-mix(in srgb,var(--char-accent) 80%,transparent)', borderInlineEnd: '1px solid color-mix(in srgb,var(--char-accent) 80%,transparent)' }} />
-      <span aria-hidden="true" style={{ position: 'absolute', bottom: 5, insetInlineStart: 5, width: 14, height: 14, borderBottom: '1px solid color-mix(in srgb,var(--char-accent) 80%,transparent)', borderInlineStart: '1px solid color-mix(in srgb,var(--char-accent) 80%,transparent)' }} />
+      {!joinedTop && <span aria-hidden="true" style={{ position: 'absolute', top: 9, insetInlineEnd: 9, width: 9, height: 9, borderTop: '1px solid rgba(214,175,107,.55)', borderInlineEnd: '1px solid rgba(214,175,107,.55)' }} />}
+      {!joinedTop && <span aria-hidden="true" style={{ position: 'absolute', top: 9, insetInlineStart: 9, width: 9, height: 9, borderTop: '1px solid rgba(214,175,107,.55)', borderInlineStart: '1px solid rgba(214,175,107,.55)' }} />}
 
       <div className="navrya-voice-console-header" style={{ position: 'relative', display: 'flex', alignItems: 'center', gap: 10, padding: '12px 16px', borderBottom: '1px solid var(--border-hairline)' }}>
         {/* NAVRYA chat dock redesign consistency pass: the same one-time header sweep
@@ -308,12 +316,9 @@ export function VoiceConsole({
         <span aria-hidden="true" style={{ position: 'absolute', top: 0, insetInlineStart: 0, insetInlineEnd: 0, height: 1, overflow: 'hidden' }}>
           <span style={{ display: 'block', width: '38%', height: 1, background: 'linear-gradient(90deg,transparent,var(--char-accent),transparent)', animation: 'navrya-sweep-a 900ms var(--ease-out) both' }} />
         </span>
-        <span style={{ width: 30, height: 30, flex: 'none', borderRadius: 999, display: 'grid', placeItems: 'center', border: '1px solid var(--border-gold)', background: 'rgba(3,8,7,.6)' }}>
-          <ModelGlyph model={model} size={16} />
-        </span>
-        <span className="navrya-voice-console-model" style={{ font: 'var(--type-caption)', letterSpacing: 'var(--tracking-label)', textTransform: 'uppercase', color: 'var(--text-primary)' }}>{model ? model.label : ''} · VOICE</span>
-        <span className="navrya-voice-console-divider" aria-hidden="true" style={{ width: 1, height: 18, background: 'var(--border-hairline)' }} />
-        <span className="navrya-voice-console-status" style={{ font: 'var(--type-caption)', letterSpacing: 'var(--tracking-label)', textTransform: 'uppercase', color: 'var(--text-muted)' }}>{denied ? 'MIC DENIED' : (PHASE_CODE[voiceState] || '')}</span>
+        <CompanionSigil portrait={companion && companion.portrait} size={36} state={denied || errored ? 'idle' : (SIGIL_STATE[voiceState] || 'idle')} dot={false} />
+        <span className="navrya-voice-console-model" style={{ font: 'var(--type-body)', fontSize: 15, fontWeight: 700, color: 'var(--text-primary)', minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{companion && companion.name ? companion.name : (model ? model.label : '')}</span>
+        {model && <span className="navrya-voice-console-status" style={{ display: 'inline-flex', minWidth: 0 }}><EngineChip model={model} glyph={<ModelGlyph model={model} size={13} />} /></span>}
         <span style={{ flex: 1 }} />
         <span className="navrya-tabular" style={{ font: 'var(--type-countdown)', fontSize: 15, color: 'var(--parchment)' }}>{mm}:{ss}</span>
         <button type="button" aria-label={strings.minimize} title={strings.minimize} onClick={onMinimize} style={{ width: 32, height: 32, flex: 'none', borderRadius: 8, display: 'grid', placeItems: 'center', cursor: 'pointer', border: '1px solid var(--border-hairline)', background: 'transparent', color: 'var(--text-muted)' }}>
@@ -404,10 +409,8 @@ export function VoiceConsole({
         >
           <Icon name="captions" size={19} />
         </button>
-        <span className="navrya-voice-console-volume" aria-hidden="true" style={{ width: 44, height: 44, flex: 'none', borderRadius: 10, display: 'grid', placeItems: 'center', border: '1px solid var(--border-hairline)', color: 'var(--text-muted)' }}>
-          <Icon name="volume-2" size={19} />
-        </span>
-        <span className="navrya-voice-console-speed" aria-hidden="true" style={{ flex: 'none', height: 44, padding: '0 12px', borderRadius: 10, display: 'grid', placeItems: 'center', border: '1px solid var(--border-hairline)', font: 'var(--type-body)', color: 'var(--text-muted)' }}>1×</span>
+        {/* Companion capsule redesign: the decorative volume icon and "1×" speed chip that used
+            to sit here are gone - they looked like controls but did nothing. */}
       </div>
 
       <div className="navrya-voice-console-footer" style={{ position: 'relative', display: 'flex', alignItems: 'center', gap: 14, padding: '9px 16px', borderTop: '1px solid var(--border-hairline)', background: 'rgba(3,8,7,.65)', flexWrap: 'wrap' }}>

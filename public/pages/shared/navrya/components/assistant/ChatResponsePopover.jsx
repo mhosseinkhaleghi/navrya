@@ -2,6 +2,7 @@ import React from 'react';
 import { Icon } from '../core/Icon.jsx';
 import { useAssistantMotion } from './motion.js';
 import { ModelGlyph } from './ModelSwitcher.jsx';
+import { CompanionSigil, EngineChip } from './CompanionSigil.jsx';
 
 /* Redesigned to match code-codex/چت داک جدید/NavryaChatDock.dc.html - a persistent, resizable
    reply panel (header with a real avatar/label/height-stage rail, a message-grid stream, a
@@ -11,24 +12,21 @@ import { ModelGlyph } from './ModelSwitcher.jsx';
    review fields/actions, onClose - this is a visual + structural redesign of the SAME contract,
    not a new component. See this file's own inline comments for the handful of deliberate, honest
    adaptations from the mock (no fabricated "SEEN" read-receipt, no "save to journal" - no real
-   journal concept exists to wire it to; Copy/Regenerate ARE wired for real). */
+   journal concept exists to wire it to; Copy/Regenerate ARE wired for real).
 
-// A `maxHeight` CAP, not a forced `height` - real user feedback on a real short reply: forcing the
-// thread to always fill the current stage's full height left a tall block of empty dead space
-// below a one-line answer, which read as "it just opens all the way regardless of the message."
-// The box now sizes to its real content and only engages a stage's ceiling once content actually
-// needs it - the stage buttons visibly matter for a long conversation, and correctly do nothing
-// visible for a short one, which is the honest, correct behavior (an earlier pass tried forcing a
-// real `height` instead specifically to make short-content growth visible, and that was the wrong
-// tradeoff - reverted here). COMPACT is wrapped in `min(...)` as the one genuinely viewport-risky
-// fixed-px value; TALL/FULL are already viewport-relative and therefore safe by construction on
-// any real screen size - the same vh-based fix a real prior overflow bug report already
-// established for this thread (see the outer 60vh body wrapper below, unchanged).
-const STAGE_META = [
-  { code: 'COMPACT', maxHeight: 'min(230px,40vh)' },
-  { code: 'TALL', maxHeight: '38vh' },
-  { code: 'FULL', maxHeight: '60vh' }
-];
+   Companion capsule redesign (artbook plates III-V): the same contract again, restyled -
+   - the header is the companion (the character's portrait and name) with the engine as a small
+     label, instead of "<ENGINE> · CHAT", a stage code (TALL/FOLDED) and a stage rail;
+   - assistant turns carry the character's portrait, user turns a character-tinted bubble;
+   - applied workflow fields show as receipt chips, not an uppercase stat grid of raw paths;
+   - copy / regenerate / feedback are one quiet icon row; the two "it was wrong" choices sit in a
+     small menu behind one button instead of five equal-weight pills;
+   - `joined` squares the bottom corners so the panel sits flush on the ChatDock row. */
+
+// One ceiling for the thread, content-sized below it (a short reply stays short). This replaces
+// the COMPACT/TALL/FULL stage tiers - still viewport-relative, still inside the 60vh body wrapper
+// below, so the original overflow fix holds; fold (the header chevron) still collapses to the header.
+const THREAD_MAX_HEIGHT = 'min(44vh, 520px)';
 
 function Dots() {
   return (
@@ -83,10 +81,30 @@ function actionButtonStyle(kind) {
     : { border: '1px solid var(--border-gold)', background: 'transparent', color: 'var(--text-muted)', fontWeight: 500 };
 }
 
-function MiniButton({ kind, icon, children, onClick }) {
+// `iconOnly` (companion capsule redesign): the compact 30px icon form the reply's own action row
+// uses (copy / regenerate / feedback) - `label` becomes its accessible name and tooltip, and
+// `active` marks an open menu trigger. Every existing caller keeps the labelled pill form.
+function MiniButton({ kind, icon, children, onClick, iconOnly = false, label, active = false, ...rest }) {
+  if (iconOnly) {
+    return (
+      <button
+        type="button" onClick={onClick} aria-label={label} title={label} {...rest}
+        style={{
+          width: 30, height: 30, flex: 'none', display: 'grid', placeItems: 'center', padding: 0,
+          borderRadius: 'var(--radius-8)', cursor: 'pointer',
+          border: '1px solid ' + (active ? 'color-mix(in srgb,var(--char-accent) 50%,transparent)' : 'transparent'),
+          background: active ? 'var(--char-active-surface)' : 'transparent',
+          color: active ? 'var(--char-accent)' : 'var(--text-muted)',
+          transition: 'color 160ms var(--ease-out),background 160ms var(--ease-out)'
+        }}
+      >
+        {icon && <Icon name={icon} size={14} />}
+      </button>
+    );
+  }
   return (
     <button
-      type="button" onClick={onClick}
+      type="button" onClick={onClick} {...rest}
       style={{
         display: 'inline-flex', alignItems: 'center', gap: 6, height: 30, padding: '0 12px',
         borderRadius: 'var(--radius-6)', font: 'var(--type-caption)', cursor: 'pointer',
@@ -102,7 +120,7 @@ function MiniButton({ kind, icon, children, onClick }) {
    decoy buttons" rule (see VoiceConsole.jsx's header comment) means it must actually do something,
    not just look clickable. Local, self-contained "Copied" flash - no store/prop plumbing needed
    for something this small. */
-function CopyButton({ text, label, copiedLabel }) {
+function CopyButton({ text, label, copiedLabel, iconOnly = false }) {
   const [copied, setCopied] = React.useState(false);
   const timerRef = React.useRef(null);
   React.useEffect(() => () => { if (timerRef.current) clearTimeout(timerRef.current); }, []);
@@ -114,21 +132,32 @@ function CopyButton({ text, label, copiedLabel }) {
       timerRef.current = setTimeout(() => setCopied(false), 1600);
     }).catch(() => {});
   }
+  if (iconOnly) return <MiniButton iconOnly icon={copied ? 'check' : 'copy'} label={copied ? copiedLabel : label} onClick={onCopy} />;
   return <MiniButton kind="discard" icon={copied ? 'check' : 'copy'} onClick={onCopy}>{copied ? copiedLabel : label}</MiniButton>;
 }
 
-function StatCell({ label, value }) {
+/* Companion capsule redesign: what the turn actually applied, as one small receipt line each
+   ("✓ Dashboard", "✓ Platform / broker MetaTrader 5") instead of the old uppercase stat grid that
+   printed raw workflow paths like DOMAINID. The human wording comes from chatDockView.jsx
+   (chatDockReceipts.js) - this only renders it. */
+function ReceiptChip({ label, value }) {
   return (
-    <div style={{ padding: '11px 13px', display: 'flex', flexDirection: 'column', gap: 5, background: 'rgba(3,8,7,.55)' }}>
-      {label && <span style={{ font: 'var(--type-caption)', fontSize: 10, letterSpacing: 'var(--tracking-label)', textTransform: 'uppercase', color: 'var(--text-muted)' }}>{label}</span>}
-      <span className="navrya-tabular" style={{ font: 'var(--type-countdown)', fontSize: 17, color: 'var(--text-primary)' }}>{value}</span>
-    </div>
+    <span style={{
+      display: 'inline-flex', alignItems: 'center', gap: 8, minHeight: 32, paddingInlineStart: 5, paddingInlineEnd: 12, paddingBlock: 3, boxSizing: 'border-box',
+      borderRadius: 999, border: '1px solid rgba(183,138,74,.36)', background: 'rgba(183,138,74,.07)',
+      font: 'var(--type-caption)', fontSize: 12.5, color: 'var(--text-primary)', maxWidth: '100%'
+    }}>
+      <span aria-hidden="true" style={{ width: 20, height: 20, flex: 'none', borderRadius: 999, display: 'grid', placeItems: 'center', background: 'rgba(46,204,113,.14)', color: 'var(--success)' }}>
+        <Icon name="check" size={12} strokeWidth={2.6} />
+      </span>
+      {label && <span style={{ color: 'var(--text-muted)', whiteSpace: 'nowrap' }}>{label}</span>}
+      <span dir="auto" style={{ minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{value}</span>
+    </span>
   );
 }
 
-// chatDockView.jsx's own `meta` shape has always been a flat array of "path: value" strings
-// (Object.keys(workflow.known).map(...)) - real data, unchanged. This just parses it back into
-// {label, value} for the new stat-grid look instead of the old pill-chip look.
+// chatDockView.jsx's own `meta` shape has always been a flat array of "label: value" strings -
+// or a bare "value" when there is no human label for it. Parsed back into {label, value}.
 function metaToStat(entry) {
   const idx = String(entry).indexOf(': ');
   if (idx === -1) return { label: '', value: entry };
@@ -144,8 +173,6 @@ function RuleBanner({ text }) {
     <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '9px 13px', borderRadius: 9, border: '1px dashed var(--divider-gold)', background: 'rgba(214,175,107,.05)' }}>
       <span style={{ flex: 'none', color: 'var(--gold-warm)', display: 'grid', placeItems: 'center' }}><Icon name="shield-check" size={15} /></span>
       <span style={{ font: 'var(--type-body)', fontSize: 13, lineHeight: '22px', color: 'var(--gold-warm)' }}>{text}</span>
-      <span style={{ flex: 1 }} />
-      <span style={{ font: 'var(--type-caption)', fontSize: 10, letterSpacing: 'var(--tracking-label)', textTransform: 'uppercase', color: 'var(--text-muted)' }}>RULE ENGINE</span>
     </div>
   );
 }
@@ -177,50 +204,50 @@ function latencyText(ms) {
   return (ms / 1000).toFixed(1);
 }
 
-function HeaderIconButton({ icon, label, onClick, children, dangerHover, size = 34 }) {
+function HeaderIconButton({ icon, label, onClick, children, dangerHover, size = 36 }) {
   const [hover, setHover] = React.useState(false);
   return (
     <button
       type="button" onClick={onClick} aria-label={label} title={label}
       onMouseEnter={() => setHover(true)} onMouseLeave={() => setHover(false)}
       style={{
-        position: 'relative', width: size, height: size, flex: 'none', borderRadius: 10, display: 'grid', placeItems: 'center',
-        cursor: 'pointer', border: '1px solid ' + (dangerHover && hover ? 'color-mix(in srgb,var(--danger) 60%,transparent)' : 'var(--border-hairline)'),
-        background: 'transparent', color: dangerHover && hover ? 'var(--danger)' : 'var(--text-muted)',
-        transition: 'border-color 160ms var(--ease-out),color 160ms var(--ease-out)'
+        position: 'relative', width: size, height: size, flex: 'none', borderRadius: 12, display: 'grid', placeItems: 'center',
+        cursor: 'pointer', border: '1px solid ' + (hover ? (dangerHover ? 'color-mix(in srgb,var(--danger) 60%,transparent)' : 'var(--border-hairline)') : 'transparent'),
+        background: hover ? 'rgba(244,234,215,.04)' : 'transparent', color: dangerHover && hover ? 'var(--danger)' : 'var(--text-muted)',
+        transition: 'border-color 160ms var(--ease-out),color 160ms var(--ease-out),background 160ms var(--ease-out)'
       }}
     >
-      {children || (icon && <Icon name={icon} size={15} />)}
+      {children || (icon && <Icon name={icon} size={16} />)}
     </button>
   );
 }
 
-/* Header stat rail + grow/shrink toggle - COMPACT/TALL/FULL step through STAGE_META's own
-   maxHeight tiers (the message thread's own scroll region below); the toggle is a ping-pong (grows
-   until FULL, then reverses to shrink back to COMPACT on further clicks, matching the design's own
-   `go()`/`toggleSize()` state machine) rather than a simple two-state expand/collapse. `flip`
-   alternates between two byte-identical keyframe names purely to force the sweep/pulse CSS
-   animation to restart on every click (browsers don't restart an animation re-set to the same
-   name) - the same trick the design's own dc.html source uses. */
-function HeightStageRail({ stage, folded, onPick, labels }) {
-  if (folded) return null;
+/* "It was wrong" behind one button: a small menu with the two real, distinct wrong-feedback
+   intents (wrong action / wrong target or value). Opens upward, inside the reply, and closes on
+   pick, Escape or any outside press. */
+function WrongFeedbackMenu({ open, onToggle, onClose, label, items }) {
+  const ref = React.useRef(null);
+  React.useEffect(() => {
+    if (!open) return undefined;
+    function onDown(e) { if (ref.current && !ref.current.contains(e.target)) onClose(); }
+    function onKey(e) { if (e.key === 'Escape') onClose(); }
+    document.addEventListener('mousedown', onDown);
+    document.addEventListener('keydown', onKey);
+    return () => { document.removeEventListener('mousedown', onDown); document.removeEventListener('keydown', onKey); };
+  }, [open, onClose]);
   return (
-    <div role="group" aria-label={labels.compact + ' / ' + labels.tall + ' / ' + labels.full} style={{ display: 'flex', alignItems: 'center', gap: 5, flex: 'none', padding: '0 4px' }}>
-      {STAGE_META.map((s, i) => (
-        <button
-          key={s.code} type="button"
-          aria-label={i === 0 ? labels.compact : i === 1 ? labels.tall : labels.full}
-          onClick={() => onPick(i)}
-          style={{
-            height: 8, padding: 0, flex: 'none', borderRadius: 99, cursor: 'pointer',
-            border: '1px solid var(--border-hairline)',
-            background: i === stage ? 'var(--char-accent)' : (i < stage ? 'rgba(214,175,107,.35)' : 'transparent'),
-            width: i === stage ? 26 : 16,
-            transition: 'background 260ms var(--ease-out),border-color 260ms var(--ease-out),width 380ms cubic-bezier(.16,1,.3,1)'
-          }}
-        />
-      ))}
-    </div>
+    <span ref={ref} style={{ position: 'relative', display: 'inline-flex' }}>
+      <MiniButton iconOnly icon="thumbs-down" label={label} active={open} aria-haspopup="menu" aria-expanded={open ? 'true' : 'false'} onClick={onToggle} />
+      {open && (
+        <span role="menu" style={{
+          position: 'absolute', bottom: 'calc(100% + 6px)', insetInlineStart: 0, zIndex: 2, minWidth: 190,
+          display: 'flex', flexDirection: 'column', gap: 4, padding: 6, boxSizing: 'border-box',
+          borderRadius: 12, border: '1px solid var(--border-gold)', background: 'var(--overlay-500)', boxShadow: 'var(--shadow-panel)'
+        }}>
+          {items}
+        </span>
+      )}
+    </span>
   );
 }
 
@@ -262,6 +289,10 @@ export function ChatResponsePopover({
   // any of them (every existing one, before this addendum) sees this whole row never render.
   feedback = null, feedbackLabels = {},
   onFeedbackCorrect, onFeedbackWrongAction, onFeedbackWrongTarget, onFeedbackRemember, onFeedbackDismiss,
+  // Companion capsule redesign: `companion` ({ name, portrait }) is the header/avatar identity,
+  // `statusLabel` the header's one-line status when not thinking, `joined` the flush-on-the-row
+  // shape. All optional - without them the header falls back to `title` and a plain sparkle.
+  companion, statusLabel, joined = false,
   width = 680,
   style, ...rest
 }) {
@@ -280,11 +311,7 @@ export function ChatResponsePopover({
   // correctly persists turn to turn until the user explicitly unfolds it again, and just as
   // correctly resets for a genuinely new popover.
   const [folded, setFolded] = React.useState(false);
-  // Height stage (design: COMPACT/TALL/FULL) - governs the message thread's own max-height below.
-  // Starts at TALL (index 1), the same default the design ships with.
-  const [stage, setStage] = React.useState(1);
-  const [stageDir, setStageDir] = React.useState(1);
-  const [flip, setFlip] = React.useState(false);
+  const [wrongMenuOpen, setWrongMenuOpen] = React.useState(false);
   const threadRef = React.useRef(null);
 
   // A real, growing conversation (messages) auto-scrolls to its latest turn on every update -
@@ -292,6 +319,9 @@ export function ChatResponsePopover({
   React.useEffect(() => {
     if (threadRef.current) threadRef.current.scrollTop = threadRef.current.scrollHeight;
   }, [messages]);
+
+  // A closed/answered feedback row must never come back with its "wrong" menu already open.
+  React.useEffect(() => { if (!feedback) setWrongMenuOpen(false); }, [feedback]);
 
   React.useEffect(() => {
     if (open) { setLeaving(false); setMounted(true); return undefined; }
@@ -307,21 +337,10 @@ export function ChatResponsePopover({
   const safety = state === 'safety';
   const review = state === 'review';
 
-  function goStage(i) {
-    const next = Math.min(2, Math.max(0, i));
-    setStage(next);
-    setFlip((f) => !f);
-    setStageDir((d) => (next >= 2 ? -1 : next <= 0 ? 1 : d));
-  }
-  function toggleSize() {
-    if (folded) { setFolded(false); setFlip((f) => !f); return; }
-    let dir = stageDir;
-    if (stage >= 2) dir = -1;
-    if (stage <= 0) dir = 1;
-    goStage(stage + dir);
-  }
-  function toggleFold() { setFolded((f) => !f); setFlip((f) => !f); }
-  const shrinking = stage >= 2 || (stageDir === -1 && stage > 0);
+  function toggleFold() { setFolded((f) => !f); }
+  const portrait = companion && companion.portrait;
+  const companionName = (companion && companion.name) || title;
+  const radius = 20;
 
   // `lines` only ever carries at most one entry in practice (the screenshot-analysis error
   // fallback) - folded into the same real message-grid renderer as `messages` instead of a
@@ -331,60 +350,48 @@ export function ChatResponsePopover({
     : (lines && lines.length ? [{ role: 'assistant', content: lines.join('\n\n') }] : null);
   const lastUserMessage = effectiveMessages ? [...effectiveMessages].reverse().find((m) => m.role === 'user') : null;
   const lastMessage = effectiveMessages && effectiveMessages.length ? effectiveMessages[effectiveMessages.length - 1] : null;
+  // The feedback choices only ever render for the LAST assistant message, only when `feedback` is
+  // truthy, and never mid-thinking/safety/review.
+  const showFeedback = !thinking && !safety && !review && effectiveMessages && lastMessage && lastMessage.role === 'assistant' && feedback;
 
   return (
     <div
       data-navrya-assistant="response" role="status" aria-live="polite"
       style={{
         width: '100%', maxWidth: width, boxSizing: 'border-box', overflow: 'hidden', position: 'relative',
-        borderRadius: 'var(--radius-14)', border: '1px solid var(--border-gold-strong)',
-        background: 'linear-gradient(180deg,rgba(17,27,28,.97),rgba(7,11,15,.985))',
-        boxShadow: 'var(--shadow-panel),var(--glow-soft)',
+        // Companion capsule redesign: an opaque body (page content never shows through a reply),
+        // the character's tint only at the very top, and - when `joined` - no bottom corners or
+        // bottom edge of its own, so it continues straight into the ChatDock row below it.
+        borderRadius: joined ? `${radius}px ${radius}px 0 0` : radius,
+        border: '1px solid var(--border-gold)', borderBottom: joined ? 0 : undefined,
+        background: 'linear-gradient(180deg,color-mix(in srgb,var(--char-accent) 11%,#0B0E14) 0%,#0B0E14 38%,#0A0D12 100%)',
+        boxShadow: joined ? '0 -12px 48px rgba(0,0,0,.45),0 0 40px var(--char-glow)' : '0 26px 64px rgba(0,0,0,.6),0 0 40px var(--char-glow)',
         animation: `${leaving ? 'navrya-pop-out 170ms var(--ease-standard)' : 'navrya-pop-in 260ms var(--ease-out)'} both`,
         transformOrigin: 'bottom center',
         ...style
       }}
       {...rest}
     >
-      <span aria-hidden="true" style={{ position: 'absolute', top: 6, insetInlineEnd: 6, width: 14, height: 14, pointerEvents: 'none', borderTop: '1px solid color-mix(in srgb,var(--char-accent) 80%,transparent)', borderInlineEnd: '1px solid color-mix(in srgb,var(--char-accent) 80%,transparent)' }} />
-      <span aria-hidden="true" style={{ position: 'absolute', top: 6, insetInlineStart: 6, width: 14, height: 14, pointerEvents: 'none', borderTop: '1px solid color-mix(in srgb,var(--char-accent) 80%,transparent)', borderInlineStart: '1px solid color-mix(in srgb,var(--char-accent) 80%,transparent)' }} />
-      <span aria-hidden="true" style={{ position: 'absolute', bottom: 6, insetInlineEnd: 6, width: 14, height: 14, pointerEvents: 'none', borderBottom: '1px solid color-mix(in srgb,var(--char-accent) 80%,transparent)', borderInlineEnd: '1px solid color-mix(in srgb,var(--char-accent) 80%,transparent)' }} />
-      <span aria-hidden="true" style={{ position: 'absolute', bottom: 6, insetInlineStart: 6, width: 14, height: 14, pointerEvents: 'none', borderBottom: '1px solid color-mix(in srgb,var(--char-accent) 80%,transparent)', borderInlineStart: '1px solid color-mix(in srgb,var(--char-accent) 80%,transparent)' }} />
+      <span aria-hidden="true" style={{ position: 'absolute', top: 9, insetInlineEnd: 9, width: 9, height: 9, pointerEvents: 'none', borderTop: '1px solid rgba(214,175,107,.55)', borderInlineEnd: '1px solid rgba(214,175,107,.55)' }} />
+      <span aria-hidden="true" style={{ position: 'absolute', top: 9, insetInlineStart: 9, width: 9, height: 9, pointerEvents: 'none', borderTop: '1px solid rgba(214,175,107,.55)', borderInlineStart: '1px solid rgba(214,175,107,.55)' }} />
 
       <header style={{
         position: 'relative', display: 'flex', alignItems: 'center', gap: 10,
-        padding: '11px 12px 11px 14px', borderBottom: '1px solid var(--border-hairline)', background: 'rgba(3,8,7,.35)'
+        padding: '16px 12px 12px 12px', borderBottom: '1px solid var(--border-hairline)'
       }}>
-        <span aria-hidden="true" style={{ position: 'absolute', top: 0, insetInlineStart: 0, insetInlineEnd: 0, height: 1, overflow: 'hidden' }}>
-          <span style={{ display: 'block', width: '38%', height: 1, background: 'linear-gradient(90deg,transparent,var(--char-accent),transparent)', animation: (flip ? 'navrya-sweep-b' : 'navrya-sweep-a') + ' 760ms var(--ease-out) both' }} />
-        </span>
-
-        <span style={{ width: 28, height: 28, flex: 'none', borderRadius: 999, display: 'grid', placeItems: 'center', border: '1px solid var(--border-gold)', background: 'rgba(3,8,7,.6)', overflow: 'hidden' }}>
-          {model ? <ModelGlyph model={model} size={15} /> : <Icon name="sparkle" size={13} style={{ color: 'var(--char-accent)' }} />}
-        </span>
-        <span style={{
-          font: 'var(--type-caption)', letterSpacing: 'var(--tracking-label)', textTransform: 'uppercase', color: 'var(--text-primary)',
-          whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', minWidth: 0
-        }}>{model ? model.label + ' · CHAT' : title}</span>
-        <span aria-hidden="true" style={{ width: 1, height: 18, background: 'var(--border-hairline)', flex: 'none' }} />
-        <span style={{ font: 'var(--type-caption)', letterSpacing: 'var(--tracking-label)', textTransform: 'uppercase', color: 'var(--text-muted)', flex: 'none' }}>
-          {folded ? 'FOLDED' : STAGE_META[stage].code}
-        </span>
-        <span style={{ flex: 1, minWidth: 8 }} />
-
-        <HeightStageRail stage={stage} folded={folded} onPick={goStage} labels={sizeLabels} />
-
-        <HeaderIconButton onClick={toggleSize} label={shrinking ? sizeLabels.shrink : sizeLabels.grow}>
-          <span aria-hidden="true" style={{ position: 'absolute', inset: -1, borderRadius: 11, border: '1px solid color-mix(in srgb,var(--char-accent) 55%,transparent)', animation: (flip ? 'navrya-pulse-b' : 'navrya-pulse-a') + ' 620ms var(--ease-out) both' }} />
-          <span aria-hidden="true" style={{ position: 'relative', display: 'block', width: 16, height: 16, transition: 'transform 460ms cubic-bezier(.16,1,.3,1)', transform: 'rotate(' + (shrinking ? '180deg' : '0deg') + ')', color: 'var(--char-accent)' }}>
-            <span style={{ position: 'absolute', top: 7, insetInlineStart: 0, width: 16, height: 2, borderRadius: 2, background: 'currentColor' }} />
-            <span style={{
-              position: 'absolute', top: 0, insetInlineStart: 7, width: 2, height: 16, borderRadius: 2, background: 'currentColor',
-              transformOrigin: 'center', transition: 'transform 420ms cubic-bezier(.16,1,.3,1),opacity 260ms var(--ease-out)',
-              transform: 'scaleY(' + (shrinking ? 0 : 1) + ')', opacity: shrinking ? 0 : 1
-            }} />
-          </span>
-        </HeaderIconButton>
+        <CompanionSigil portrait={portrait} size={36} state={thinking ? 'thinking' : 'idle'} />
+        <div style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', gap: 3 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, minWidth: 0 }}>
+            <span style={{ font: 'var(--type-body)', fontSize: 15, fontWeight: 700, color: 'var(--text-primary)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', minWidth: 0 }}>{companionName}</span>
+            {model && <EngineChip model={model} glyph={<ModelGlyph model={model} size={13} />} />}
+          </div>
+          {(thinking ? thinkingLabel : statusLabel) && (
+            <span style={{ display: 'flex', alignItems: 'center', gap: 6, font: 'var(--type-caption)', fontSize: 12, color: 'var(--text-muted)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+              <span aria-hidden="true" style={{ width: 6, height: 6, flex: 'none', borderRadius: 999, background: thinking ? 'var(--gold-warm)' : 'var(--success)' }} />
+              {thinking ? thinkingLabel + '…' : statusLabel}
+            </span>
+          )}
+        </div>
 
         <HeaderIconButton onClick={toggleFold} label={folded ? sizeLabels.unfold : sizeLabels.fold}>
           <span aria-hidden="true" style={{ display: 'grid', placeItems: 'center', transition: 'transform 420ms cubic-bezier(.16,1,.3,1)', transform: 'rotate(' + (folded ? '180deg' : '0deg') + ')' }}>
@@ -392,7 +399,7 @@ export function ChatResponsePopover({
           </span>
         </HeaderIconButton>
 
-        {onClose && <HeaderIconButton icon="x" label={sizeLabels.close} onClick={onClose} dangerHover size={30} />}
+        {onClose && <HeaderIconButton icon="x" label={sizeLabels.close} onClick={onClose} dangerHover />}
       </header>
 
       {/* fix/voice-mode-turn-ux (Part E req 10): the whole body - not merely the messages thread
@@ -409,12 +416,9 @@ export function ChatResponsePopover({
         )}
 
         {thinking && (
-          <div style={{ display: 'flex', gap: 12 }}>
-            <span style={{ position: 'relative', width: 32, height: 32, flex: 'none', borderRadius: 999, display: 'grid', placeItems: 'center', border: '1px solid var(--border-gold)', background: 'rgba(3,8,7,.6)' }}>
-              <span aria-hidden="true" style={{ position: 'absolute', inset: -3, borderRadius: 999, border: '1px solid color-mix(in srgb,var(--char-accent) 45%,transparent)', animation: 'navrya-halo 1400ms var(--ease-standard) infinite' }} />
-              {model ? <ModelGlyph model={model} size={17} /> : <Icon name="sparkle" size={14} style={{ color: 'var(--char-accent)' }} />}
-            </span>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 10, font: 'var(--type-body)', color: 'var(--text-muted)', paddingTop: 5 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+            <CompanionSigil portrait={portrait} size={28} state="thinking" dot={false} />
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10, font: 'var(--type-body)', fontSize: 14, color: 'var(--text-muted)' }}>
               <Dots /><span>{thinkingLabel}{'…'}</span>
             </div>
           </div>
@@ -444,11 +448,10 @@ export function ChatResponsePopover({
             ref={threadRef} className="navrya-scroll"
             // Found via a real user report + screenshot: a fixed 360px thread cap, plus this
             // header/padding's own real overhead, could still exceed roughly half the viewport
-            // on a shorter window - never viewport-relative, so it didn't scale down. The height-
-            // stage tiers (STAGE_META, above) replace that one fixed number with three real,
-            // user-controlled choices, still bounded by the 60vh outer wrapper above regardless of
-            // stage, so FULL can never itself reopen the original overflow bug.
-            style={{ display: 'flex', flexDirection: 'column', gap: 14, maxHeight: STAGE_META[stage].maxHeight, overflowY: 'auto', paddingInlineEnd: 4 }}
+            // on a shorter window - never viewport-relative, so it didn't scale down. One
+            // viewport-relative ceiling (THREAD_MAX_HEIGHT), still bounded by the 60vh outer
+            // wrapper above, so it can never reopen the original overflow bug.
+            style={{ display: 'flex', flexDirection: 'column', gap: 16, maxHeight: THREAD_MAX_HEIGHT, overflowY: 'auto', paddingInlineEnd: 4 }}
           >
             {effectiveMessages.map((m, i) => {
               const prev = i > 0 ? effectiveMessages[i - 1] : null;
@@ -467,32 +470,21 @@ export function ChatResponsePopover({
                   {isUser ? (
                     <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 6, animation: i === effectiveMessages.length - 1 ? 'navrya-pop-in 300ms var(--ease-out) both' : 'none' }}>
                       <div dir="auto" style={{
-                        maxWidth: 'min(84%,560px)', boxSizing: 'border-box', padding: '11px 14px', borderRadius: 14, borderEndEndRadius: 4,
-                        border: '1px solid var(--border-hairline)', background: 'rgba(244,234,215,.05)',
-                        font: 'var(--type-body)', fontSize: 14, lineHeight: '25px', color: 'var(--text-primary)', textWrap: 'pretty'
+                        maxWidth: 'min(80%,560px)', boxSizing: 'border-box', padding: '9px 14px', borderRadius: 16, borderEndEndRadius: 5,
+                        border: '1px solid color-mix(in srgb,var(--char-accent) 28%,transparent)', background: 'color-mix(in srgb,var(--char-accent) 13%,transparent)',
+                        font: 'var(--type-body)', fontSize: 13.5, lineHeight: '25px', color: 'var(--text-primary)', textWrap: 'pretty'
                       }}>{stripMarkdownTokens(m.content)}</div>
                       {time && <span style={{ font: 'var(--type-caption)', fontSize: 11, letterSpacing: '.06em', color: 'var(--text-dim)', paddingInlineEnd: 4 }}>{time}</span>}
                     </div>
                   ) : (
-                    <div style={{ display: 'flex', gap: 12 }}>
-                      <div style={{ flex: 'none', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 8 }}>
-                        <span style={{ width: 30, height: 30, borderRadius: 999, display: 'grid', placeItems: 'center', border: '1px solid var(--border-gold)', background: 'rgba(3,8,7,.6)', overflow: 'hidden' }}>
-                          {model ? <ModelGlyph model={model} size={16} /> : <Icon name="sparkle" size={13} style={{ color: 'var(--char-accent)' }} />}
+                    <div style={{ display: 'flex', gap: 10, alignItems: 'flex-start' }}>
+                      <CompanionSigil portrait={portrait} size={28} dot={false} />
+                      <div style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', gap: 6 }}>
+                        <span style={{ font: 'var(--type-caption)', fontSize: 11.5, color: 'var(--text-muted)' }}>
+                          {[companionName, time, m.latencyMs != null ? latencyText(m.latencyMs) + 's' : ''].filter(Boolean).join(' · ')}
                         </span>
-                        {i < effectiveMessages.length - 1 && <span aria-hidden="true" style={{ flex: 1, width: 1, background: 'linear-gradient(180deg,var(--divider-gold),transparent)' }} />}
-                      </div>
-                      <div style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', gap: 8 }}>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
-                          {model && <span style={{ font: 'var(--type-caption)', fontSize: 11, letterSpacing: 'var(--tracking-label)', textTransform: 'uppercase', color: 'var(--gold-warm)' }}>{model.label}</span>}
-                          {(time || m.latencyMs != null) && model && <span aria-hidden="true" style={{ width: 1, height: 12, background: 'var(--border-hairline)' }} />}
-                          {(time || m.latencyMs != null) && (
-                            <span style={{ font: 'var(--type-caption)', fontSize: 11, letterSpacing: '.06em', color: 'var(--text-muted)' }}>
-                              {time}{time && m.latencyMs != null ? ' · ' : ''}{m.latencyMs != null ? latencyText(m.latencyMs) + 's' : ''}
-                            </span>
-                          )}
-                        </div>
                         <p dir="auto" style={{
-                          margin: 0, font: 'var(--type-body)', fontSize: 14, lineHeight: '26px', color: 'var(--parchment)', textWrap: 'pretty', whiteSpace: 'pre-line',
+                          margin: 0, font: 'var(--type-body)', fontSize: 14, lineHeight: '27px', color: 'var(--parchment)', textWrap: 'pretty', whiteSpace: 'pre-line',
                           animation: i === effectiveMessages.length - 1 ? 'navrya-line-in 320ms var(--ease-out) both' : 'none'
                         }}>{stripMarkdownTokens(m.content)}</p>
                       </div>
@@ -505,37 +497,47 @@ export function ChatResponsePopover({
         )}
 
         {!thinking && !safety && !review && meta.length > 0 && (
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(140px,1fr))', gap: 1, borderRadius: 10, overflow: 'hidden', border: '1px solid var(--border-hairline)', background: 'var(--border-hairline)' }}>
-            {meta.map((m, i) => { const cell = metaToStat(m); return <StatCell key={i} label={cell.label} value={cell.value} />; })}
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+            {meta.map((m, i) => { const cell = metaToStat(m); return <ReceiptChip key={i} label={cell.label} value={cell.value} />; })}
           </div>
         )}
 
         {!thinking && !safety && !review && ruleApplied && ruleAppliedLabel && <RuleBanner text={ruleAppliedLabel} />}
 
-        {!thinking && !safety && !review && effectiveMessages && lastMessage && lastMessage.role === 'assistant' && (messageActionLabels.copy || onRegenerate) && (
-          <ActionRow>
-            {messageActionLabels.copy && <CopyButton text={lastMessage.content} label={messageActionLabels.copy} copiedLabel={messageActionLabels.copied} />}
-            {onRegenerate && lastUserMessage && <MiniButton kind="discard" icon="rotate-cw" onClick={() => onRegenerate(lastUserMessage.content)}>{messageActionLabels.regenerate}</MiniButton>}
-          </ActionRow>
-        )}
+        {/* One quiet row under the last reply: the feedback question and its choices at the start,
+            copy / regenerate at the end.
 
-        {/* Voice Command Learning Profile addendum, section 8: lightweight post-action feedback -
-            never blocks typing/Voice (a plain inline row, no modal), always dismissible, and reuses
-            the exact same MiniButton/ActionRow this popover's own Copy/Regenerate row already uses -
-            no new design system. Every button here fires the SAME underlying command-feedback path
-            a spoken/typed phrase already does (chatDockView.jsx wires each handler to submit() with
-            the identical canonical phrase text) - this row is a convenience trigger, never a second,
-            parallel learning mechanism. */}
-        {!thinking && !safety && !review && effectiveMessages && lastMessage && lastMessage.role === 'assistant' && feedback && (
-          <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
-            <span style={{ font: 'var(--type-caption)', color: 'var(--text-dim)', flex: 'none' }}>{feedbackLabels.prompt}</span>
-            <ActionRow>
-              {onFeedbackCorrect && <MiniButton kind="apply" icon="check" onClick={onFeedbackCorrect}>{feedbackLabels.correct}</MiniButton>}
-              {onFeedbackRemember && <MiniButton kind="apply" icon="bookmark" onClick={onFeedbackRemember}>{feedbackLabels.rememberThis}</MiniButton>}
-              {onFeedbackWrongAction && <MiniButton kind="discard" icon="close" onClick={onFeedbackWrongAction}>{feedbackLabels.wrongAction}</MiniButton>}
-              {onFeedbackWrongTarget && <MiniButton kind="discard" icon="close" onClick={onFeedbackWrongTarget}>{feedbackLabels.wrongTarget}</MiniButton>}
-              {onFeedbackDismiss && <MiniButton kind="discard" icon="x" onClick={onFeedbackDismiss}>{feedbackLabels.dismiss}</MiniButton>}
-            </ActionRow>
+            Voice Command Learning Profile addendum, section 8 (unchanged contract): the feedback
+            choices never block typing/Voice, stay dismissible, and every one fires the SAME
+            command-feedback path a spoken/typed phrase does (chatDockView.jsx wires each handler to
+            submit() with the canonical phrase) - a convenience trigger, never a second, parallel
+            learning mechanism. Correct and "do this next time" are one click each; the two
+            "wrong" intents share one menu so the row no longer wraps into five equal pills. */}
+        {!thinking && !safety && !review && effectiveMessages && lastMessage && lastMessage.role === 'assistant' && (messageActionLabels.copy || onRegenerate || feedback) && (
+          <div style={{ display: 'flex', alignItems: 'center', gap: 2, minHeight: 30 }}>
+            {showFeedback && (
+              <ActionRow>
+                <span style={{ font: 'var(--type-caption)', fontSize: 12, color: 'var(--text-dim)', flex: 'none', marginInlineEnd: 4 }}>{feedbackLabels.prompt}</span>
+                {onFeedbackCorrect && <MiniButton iconOnly icon="check" label={feedbackLabels.correct} onClick={onFeedbackCorrect} />}
+                {onFeedbackRemember && <MiniButton iconOnly icon="bookmark" label={feedbackLabels.rememberThis} onClick={onFeedbackRemember} />}
+                {(onFeedbackWrongAction || onFeedbackWrongTarget) && (
+                  <WrongFeedbackMenu
+                    open={wrongMenuOpen} onToggle={() => setWrongMenuOpen((v) => !v)} onClose={() => setWrongMenuOpen(false)}
+                    label={feedbackLabels.wrong || feedbackLabels.wrongAction}
+                    items={(
+                      <React.Fragment>
+                        {onFeedbackWrongAction && <MiniButton kind="discard" icon="close" role="menuitem" onClick={() => { setWrongMenuOpen(false); onFeedbackWrongAction(); }}>{feedbackLabels.wrongAction}</MiniButton>}
+                        {onFeedbackWrongTarget && <MiniButton kind="discard" icon="close" role="menuitem" onClick={() => { setWrongMenuOpen(false); onFeedbackWrongTarget(); }}>{feedbackLabels.wrongTarget}</MiniButton>}
+                      </React.Fragment>
+                    )}
+                  />
+                )}
+                {onFeedbackDismiss && <MiniButton iconOnly icon="x" label={feedbackLabels.dismiss} onClick={onFeedbackDismiss} />}
+              </ActionRow>
+            )}
+            <span style={{ flex: 1 }} />
+            {messageActionLabels.copy && <CopyButton iconOnly text={lastMessage.content} label={messageActionLabels.copy} copiedLabel={messageActionLabels.copied} />}
+            {onRegenerate && lastUserMessage && <MiniButton iconOnly icon="rotate-cw" label={messageActionLabels.regenerate} onClick={() => onRegenerate(lastUserMessage.content)} />}
           </div>
         )}
 
@@ -546,7 +548,7 @@ export function ChatResponsePopover({
                 display: 'flex', flexDirection: 'column', gap: 6, padding: 10,
                 borderRadius: 'var(--radius-8)', border: '1px solid rgba(244,234,215,.10)', background: 'rgba(244,234,215,.04)'
               }}>
-                <small style={{ font: 'var(--type-caption)', color: 'var(--text-muted)' }}>{s.path}</small>
+                <small style={{ font: 'var(--type-caption)', color: 'var(--text-muted)' }}>{s.label || s.path}</small>
                 <span style={{ font: 'var(--type-body)', color: 'var(--text-primary)' }}>{String(s.value)}</span>
                 <ActionRow>
                   <MiniButton kind="apply" icon="check" onClick={() => onApplySuggestion && onApplySuggestion(s)}>{suggestionLabels && suggestionLabels.apply}</MiniButton>
