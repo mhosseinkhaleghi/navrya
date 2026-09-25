@@ -736,6 +736,73 @@ test('a Trade Details view left open by an auto-navigate after Trade creation do
   assert.equal(fetchCall.body.activeProcess, null);
 });
 
+// Found via a real user report ("go to the accounts section" answered with "I cannot move", for
+// every later navigation too): the model named the page in a form navigate.to could not resolve,
+// so the workflow waited for domainId forever and its own 'navigate-to' registration made every
+// later turn an "open form" turn with no availableActions. A waiting navigation is now dropped at
+// the start of the next turn; navigateDomain.js (tests/navigate-domain.test.mjs) resolves the page
+// names themselves.
+function registerRealisticNavigate(window, onSubmit) {
+  window.TradeJournalAIProcessRegistry.register('navigate-to', {
+    allowlist: ['domainId'],
+    isOpen: () => { const wf = window.TradeJournalAIWorkflowEngine.current(); return !!(wf && wf.actionId === 'navigate.to'); },
+    applyValue: () => {}
+  });
+  window.TradeJournalAIActionRegistry.registerAction({
+    id: 'navigate.to', domain: 'navigation', riskLevel: 'low', description: 'Navigate to a real page', aliases: ['go to'],
+    requiredFields: ['domainId'], optionalFields: [], available: () => true,
+    normalizeField: (p, value) => (p === 'domainId' ? (['accounts', 'dashboard'].includes(value) ? value : null) : value),
+    submit: (known) => { onSubmit(known); return { navigated: true }; }, resultContext: () => {}
+  });
+}
+
+test('a navigate.to left waiting on an unresolvable page never blocks the next turn - navigation is re-offered and no form is reported open', async () => {
+  const calls = [];
+  const window = await coreSandbox({
+    withWorkflowEngine: true,
+    fetch: async (url, options) => {
+      calls.push(JSON.parse(options.body));
+      const reply = calls.length === 1
+        ? { reply: 'OK', action: { id: 'navigate.to', fields: [{ path: 'domainId', value: 'بخش حساب‌ها' }] }, provider: 'openai', usage: { totalTokens: 1 } }
+        : { reply: 'plain answer', action: null, provider: 'openai', usage: { totalTokens: 1 } };
+      return { ok: true, json: async () => reply };
+    }
+  });
+  registerRealisticNavigate(window, () => {});
+
+  await window.TradeJournalChatDockCore.sendChat({ text: 'برو وارد بخش حساب ها بشو', therapistMode: false, transcript: [] });
+  const stuck = window.TradeJournalAIWorkflowEngine.current();
+  assert.ok(stuck && stuck.actionId === 'navigate.to' && stuck.missing.includes('domainId'), 'precondition: the unresolvable page leaves the navigation waiting');
+
+  await window.TradeJournalChatDockCore.sendChat({ text: 'go to accounts', therapistMode: false, transcript: [] });
+  assert.ok(Array.isArray(calls[1].availableActions) && calls[1].availableActions.some((a) => a.id === 'navigate.to'), 'navigation must be offered again');
+  assert.equal(calls[1].activeProcess, null, 'the waiting navigation must never be reported as an open form');
+  assert.equal(window.TradeJournalAIWorkflowEngine.current(), null, 'the stuck navigation is dropped');
+});
+
+test('a navigate.to already scheduled to submit is left alone by that recovery', async () => {
+  let submitted = null;
+  let calls = 0;
+  const window = await coreSandbox({
+    withWorkflowEngine: true,
+    fetch: async () => {
+      calls += 1;
+      return { ok: true, json: async () => ({ reply: 'Opening Accounts', action: { id: 'navigate.to', fields: [{ path: 'domainId', value: 'accounts' }] }, provider: 'openai', usage: { totalTokens: 1 } }) };
+    }
+  });
+  registerRealisticNavigate(window, (known) => { submitted = known.domainId; });
+
+  await window.TradeJournalChatDockCore.sendChat({ text: 'go to accounts', therapistMode: false, transcript: [] });
+  const pending = window.TradeJournalAIWorkflowEngine.current();
+  assert.ok(!pending || pending.status === 'pending-submit' || pending.status === 'submitting' || submitted === 'accounts', 'a resolved navigation is scheduled (or already submitted)');
+  if (pending) {
+    const status = pending.status;
+    window.TradeJournalAIWorkflowEngine.pruneIfAbandoned();
+    assert.equal(window.TradeJournalAIWorkflowEngine.current() && window.TradeJournalAIWorkflowEngine.current().status, status, 'nothing here touches a scheduled navigation');
+  }
+  assert.equal(calls, 1);
+});
+
 // General principle proven directly: ANY empty-allowlist registration is excluded, not only the
 // two id prefixes exercised above - a future context-only registration gets this for free.
 test('any registration with an empty allowlist is excluded from blocking discovery, regardless of its id prefix', async () => {

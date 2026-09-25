@@ -125,7 +125,7 @@ test('chatDockView.jsx builds the popover meta from receipts and passes the char
   assert.match(viewSrc, /const companion = companionFor\(i18n, navryaCharacter\);/);
   assert.match(viewSrc, /stringsFor\(languageOf\(i18n\)\)\.charTitle/);
   assert.match(viewSrc, /assetUrl\('assets\/portraits\/portrait-' \+ navryaCharacter \+ '\.webp'\)/);
-  assert.match(viewSrc, /companion=\{companion\} surfaceJoined=\{!!\(popover && popover\.open\)\}/);
+  assert.match(viewSrc, /companion=\{companion\} surfaceJoined=\{historyOpen \|\| !!\(popover && popover\.open\)\}/);
   assert.match(viewSrc, /companion=\{companion\} joined statusLabel=\{i18n\.t\('aiDockStatusReady'\)\}/);
 });
 
@@ -249,4 +249,33 @@ test('the new strings exist in all four languages', () => {
   assert.equal((i18nSrc.match(/aiDockStatusReady: '/g) || []).length, 4);
   assert.equal((i18nSrc.match(/aiChatFeedbackWrong: '/g) || []).length, 4);
   assert.equal((i18nSrc.match(/aiDockTools: '/g) || []).length, 4);
+});
+
+test('history is the capsule\'s own joined panel, full width, with a delete per conversation behind an inline confirmation', () => {
+  const panel = viewSrc.slice(viewSrc.indexOf('export function ConversationHistoryDropdown('), viewSrc.indexOf('function ChatDockApp('));
+  assert.match(panel, /borderRadius: '20px 20px 0 0', border: '1px solid var\(--border-gold-strong\)', borderBottom: 0,/);
+  assert.doesNotMatch(panel, /maxWidth: 360/, 'no longer a small separate dropdown');
+  assert.match(panel, /iconButton\('trash-2', i18n\.t\('aiDockHistoryDelete'\), \(\) => \{ setFailedId\(null\); setConfirmId\(conversation\.id\); \}, 'danger'\)/);
+  assert.match(panel, /onClick=\{\(\) => confirmDelete\(conversation\.id\)\}/, 'deleting only ever happens from the confirmation');
+  assert.match(panel, /if \(ok\) setConfirmId\(null\); else setFailedId\(id\);/, 'a failed delete is reported, the row stays');
+  assert.match(viewSrc, /await historyStore\.remove\(id\);/, 'the same store DELETE the AI Assistant screen uses');
+  assert.match(viewSrc, /setHistoryList\(\(list\) => list\.filter\(\(conversation\) => conversation\.id !== id\)\);/);
+  assert.match(viewSrc, /if \(activeConversationIdRef\.current === id\) \{\s*\n\s*startNewChat\(\);\s*\n\s*setHistoryOpen\(true\);/);
+  assert.match(viewSrc, /onNewChat=\{startNewChat\} onDelete=\{deleteConversation\}/);
+  assert.match(viewSrc, /\{popover && !historyOpen && \(/, 'while history is open it is the panel on the row');
+  assert.match(viewSrc, /surfaceJoined=\{historyOpen \|\| !!\(popover && popover\.open\)\}/);
+});
+
+test('every capsule surface has the strong gold edge and a lit top line, so its top edge reads clearly on the dark page', () => {
+  assert.match(dockSrc, /border: '1px solid var\(--border-gold-strong\)',/);
+  assert.match(dockSrc, /0 0 40px var\(--char-glow\),inset 0 1px 0 rgba\(244,234,215,\.12\)/);
+  assert.equal((popoverSrc.match(/border: '1px solid var\(--border-gold-strong\)', borderBottom: joined \? 0 : undefined,/g) || []).length, 2);
+  assert.match(consoleSrc, /border: '1px solid var\(--border-gold-strong\)',/);
+  assert.doesNotMatch(code(popoverSrc) + code(consoleSrc), /border: '1px solid var\(--border-gold\)', borderBottom/);
+});
+
+test('the history strings exist in all four languages', () => {
+  for (const key of ['aiDockHistoryMessages', 'aiDockHistoryDelete', 'aiDockHistoryDeleteConfirm', 'aiDockHistoryDeleteYes', 'aiDockHistoryDeleteNo', 'aiDockHistoryDeleteFailed']) {
+    assert.equal((i18nSrc.match(new RegExp(key + ": ['\"]", 'g')) || []).length, 4, key);
+  }
 });
