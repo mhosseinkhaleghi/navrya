@@ -108,12 +108,10 @@ suite, by design.
   canonical interview metadata as of this pass. Every other pre-existing fillable form keeps its
   original live field-sync behavior (Voice can still fill it field-by-field) but does not yet
   carry deterministic display-order/label metadata - see the manifest's own `pending` entries.
-- `analysisSymbols` (the Free-plan "1 active analysis symbol" entitlement,
-  `server/commercial/quota.mjs`) has no real client-side UI feature that claims/tracks an active
-  symbol as of this pass (confirmed via repository audit - `server/community/routes.analysis-
-  symbols.mjs`'s own header comment already recorded this as unimplemented client-side). The
+- `analysisSymbols` (the plan's instrument cap, `server/commercial/quota.mjs`) is enforced on the
+  Instrument Catalog (`POST /api/sync/instrument-catalog`, the store the Session InstrumentPicker
+  really writes); the old separate `user_analysis_symbols` route was retired. The
   subscription-limit preflight (`chat-dock-core.js`'s `planLimitPreflight()`) is real and wired for
-  `sessions` (via `session.create`'s `quotaResourceType: 'sessions'`); a symbol-alias
-  canonicalization step for `analysisSymbols` was deliberately not built, since there is no real
-  feature to attach it to - building one would be inventing new product behavior, which this task
-  explicitly forbids.
+  `sessions` (via `session.create`'s `quotaResourceType: 'sessions'`); the instrument cap is not
+  preflighted client-side (the server's 403 PLAN_LIMIT_REACHED is the authority and the picker
+  explains it), and a symbol-alias canonicalization step was deliberately not built.
