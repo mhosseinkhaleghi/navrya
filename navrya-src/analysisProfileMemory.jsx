@@ -3,6 +3,8 @@ import { Panel } from '../public/pages/shared/navrya/components/core/Panel.jsx';
 import { Icon } from '../public/pages/shared/navrya/components/core/Icon.jsx';
 import { Button } from '../public/pages/shared/navrya/components/forms/Button.jsx';
 import { EngineLearningPanel } from './engineLearning.jsx';
+import { useTeachJobs } from './analysisProfileTeachActivity.jsx';
+import { proposalSize } from './analysisProfileTeachJobs.js';
 import { MemorySyncPanel, useMemoryProjection } from './analysisProfileMemorySync.jsx';
 import { MemoryGraphPanel, MemoryGraphWorkspace } from './analysisProfileBrain.jsx';
 import { trt, trDigits, trDate } from './analysisProfileTrainingCopy.js';
@@ -66,8 +68,9 @@ export function MemoryTab({ profile, lang, onManageConcepts }) {
   // The 3D workspace is a separate surface, opened deliberately - never mounted with the tab, so
   // the WebGL context and the vendored engine only ever exist once the trader asks for them.
   const [graphOpen, setGraphOpen] = React.useState(false);
-  // AI proposals open in the teaching panel below (not accepted yet) - reported up so the sync status can list them as awaiting review.
-  const [reviewing, setReviewing] = React.useState(0);
+  // AI proposals that are back from the engine and not accepted yet, wherever they were started (a source taught from the Knowledge tab counts
+  // too - the job store keeps them) - so the sync status can list them as awaiting review.
+  const reviewing = useTeachJobs(profile.id).filter((job) => job.phase === 'review').reduce((n, job) => n + Math.max(1, proposalSize(job)), 0);
   // The graph and the sync status are ONE projection (analysisProfileMemorySync.jsx): a derived view of the saved profile, the engine context,
   // the ledger and the sources. It never writes and never calls AI; the picture shows the last SYNCED memory, and says when it is stale.
   const memory = useMemoryProjection(profile, lang, { reviewingCount: reviewing });
@@ -152,7 +155,7 @@ export function MemoryTab({ profile, lang, onManageConcepts }) {
 
       <MemorySyncPanel lang={lang} memory={memory} textId={textId} />
 
-      <EngineLearningPanel lang={lang} profile={profile} onChanged={reload} onReviewChange={setReviewing} />
+      <EngineLearningPanel lang={lang} profile={profile} onChanged={reload} />
 
       <Panel padding="18px 20px">
         <div style={{ display: 'flex', flexDirection: 'column' }}>

@@ -237,15 +237,14 @@ test('the hook is marked stale by the existing profile-changed event, re-reads t
   assert.doesNotMatch(code, /applyLearning|\.update\(|\.create\(|addSource|removeSource|updateSource|uploadSourcePdf|recordEvent|recordNote|appendMessages|resolveProposals|clearMessages|ingestLearning|\.chat\(|\.preview\(|suggest(Focuses|Concepts)|readSource|fetch\(|localStorage|indexedDB/, 'read-only by construction');
 });
 
-test('the Memory tab tells the projection about a proposal that is open for review, and clears it when applied or discarded', async () => {
-  const engine = await src('engineLearning.jsx');
-  assert.match(engine, /export function EngineLearningPanel\(\{ lang, profile, onChanged, preset, onTaught, onReviewChange \}\)/);
-  assert.match(engine, /onReviewChange\(phase === 'review' && proposal \? Math\.max\(1, proposal\.conceptsProposed\.length \+ \(proposal\.updatedUnderstanding \? 1 : 0\)\) : 0\)/);
-  assert.match(engine, /return \(\) => onReviewChange\(0\);/);
+test('the Memory tab counts every proposal waiting for approval - wherever it was started - from the teaching job store, and clears it when applied or discarded', async () => {
   const tab = await src('analysisProfileMemory.jsx');
+  assert.match(tab, /const reviewing = useTeachJobs\(profile\.id\)\.filter\(\(job\) => job\.phase === 'review'\)\.reduce\(\(n, job\) => n \+ Math\.max\(1, proposalSize\(job\)\), 0\);/);
   assert.match(tab, /useMemoryProjection\(profile, lang, \{ reviewingCount: reviewing \}\)/);
-  assert.match(tab, /onReviewChange=\{setReviewing\}/);
   assert.match(tab, /graph=\{memory\.projection\.graph\}/);
+  const engine = await src('engineLearning.jsx');
+  assert.match(engine, /export function EngineLearningPanel\(\{ lang, profile, onChanged, preset, onTaught \}\)/, 'the panel no longer reports its own review state up - the store is the single source');
+  assert.doesNotMatch(engine, /onReviewChange/);
 });
 
 test('every copy key the sync UI looks up exists in all four languages (a typo would print the raw key)', async () => {

@@ -79,20 +79,24 @@ test('every key a training component looks up actually exists (a typo would rend
 
 // ---- Engine-learning panel -----------------------------------------------------------------------
 
-test('the teach flow makes exactly one AI call, refuses empty text up front, and never applies anything itself - apply() is the only writer', async () => {
-  const source = await read('engineLearning.jsx');
-  const teach = fnBody(source, 'teach');
-  assert.equal((teach.match(/ingestLearning\(/g) || []).length, 1, 'teach() makes exactly one AI call');
-  assert.match(teach, /!trimmed/, 'empty text must be refused before any call');
-  assert.doesNotMatch(teach, /applyLearning\(/, 'teach() must only PROPOSE - it must never apply');
-  const apply = fnBody(source, 'apply');
-  assert.equal((apply.match(/applyLearning\(/g) || []).length, 1, 'apply() commits through exactly one applyLearning() call (one save, one event)');
+test('the teach flow makes exactly one AI call, refuses empty text up front, and never applies anything itself - apply is the only writer', async () => {
+  const panel = await read('engineLearning.jsx');
+  const jobs = await read('analysisProfileTeachJobs.js');
+  const teach = fnBody(panel, 'teach');
+  assert.match(teach, /requiresTypedText && !trimmed/, 'empty text must be refused before any job starts');
+  assert.match(teach, /startTeachJob\(/);
+  assert.doesNotMatch(teach, /applyTeachJob\(|applyLearning\(|ingestLearning\(/, 'the panel only starts a job - it never calls the model or applies');
+  const run = fnBody(jobs, 'run');
+  assert.equal((run.match(/ingestLearning\(/g) || []).length, 1, 'the job makes exactly one AI call');
+  assert.doesNotMatch(run, /applyLearning\(/, 'a job must only PROPOSE - it must never apply');
+  assert.match(fnBody(panel, 'apply'), /applyTeachJob\(/, 'the panel applies only through the job store, from the trader\'s click');
+  assert.equal((fnBody(jobs, 'applyTeachJob').match(/applyLearning\(/g) || []).length, 1, 'applyTeachJob commits through exactly one applyLearning() call (one save, one event)');
 });
 
 test('tokens are recorded the moment the AI call returns (a discarded proposal still cost tokens) and never counted a second time on apply', async () => {
-  const source = await read('engineLearning.jsx');
-  assert.match(fnBody(source, 'teach'), /recordEvent\(profile\.id, \{[\s\S]*?tokenUsage: result\.usage \|\| null/, 'the analysis event carries the real usage');
-  assert.match(fnBody(source, 'apply'), /tokenUsage: null/, 'apply() must not re-attribute the same tokens');
+  const jobs = await read('analysisProfileTeachJobs.js');
+  assert.match(fnBody(jobs, 'run'), /recordEvent\(profile\.id, \{[\s\S]*?tokenUsage: result\.usage \|\| null/, 'the analysis event carries the real usage');
+  assert.match(fnBody(jobs, 'applyTeachJob'), /tokenUsage: null/, 'apply must not re-attribute the same tokens');
 });
 
 test('"Save without teaching" is a plain diary note: it calls recordNote() and NEVER the AI client or applyLearning()', async () => {
@@ -103,12 +107,13 @@ test('"Save without teaching" is a plain diary note: it calls recordNote() and N
 
 test('the wallet-balance error is shown honestly, distinct from a generic failure - there is no fake local fallback proposal', async () => {
   const source = await read('engineLearning.jsx');
+  const jobs = await read('analysisProfileTeachJobs.js');
   // An empty wallet, an expired session, a dead proxy, a timeout and a PDF-incompatible model each get their own message from the
-  // shared mapper (tests/analysis-profile-ai-errors.test.mjs) - this file only keeps the raw code and never fakes a proposal.
-  assert.match(source, /setError\(toAiError\(caught\)\)/);
-  assert.match(source, /<AiErrorNotice lang=\{lang\} error=\{error\} onRetry=\{teach\} busy=\{phase === 'working'\} \/>/);
-  assert.doesNotMatch(source, /WALLET_INSUFFICIENT_BALANCE|MODEL_PDF_UNSUPPORTED/);
-  assert.doesNotMatch(source, /local-fallback|fallbackProposal|mockProposal/i);
+  // shared mapper (tests/analysis-profile-ai-errors.test.mjs) - the job only keeps the raw code and never fakes a proposal.
+  assert.match(jobs, /error: toAiError\(caught\)/);
+  assert.match(source, /<AiErrorNotice lang=\{lang\} error=\{error\} onRetry=\{retry\} busy=\{phase === 'working'\} \/>/);
+  assert.doesNotMatch(source + jobs, /WALLET_INSUFFICIENT_BALANCE|MODEL_PDF_UNSUPPORTED/);
+  assert.doesNotMatch(source + jobs, /local-fallback|fallbackProposal|mockProposal/i);
 });
 
 test('the three "steps" are shown as in-progress while the call is in flight and only show real results (concept count, understanding change, tokens) once it returns - no animated fake progress', async () => {

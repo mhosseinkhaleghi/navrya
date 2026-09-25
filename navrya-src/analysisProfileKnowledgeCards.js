@@ -45,11 +45,21 @@ export function formatSourceSize(bytes) {
   return { value: String(Math.max(1, Math.round(n / 1024))), unit: 'KB' }; // anything under 1 KB reads as 1 KB, never as 0
 }
 
-// One of queued | ready | taught | failed | missing:
+// The teaching job (analysisProfileTeachJobs.js) running or waiting for this source, or null. Jobs are keyed 'source:<id>'.
+export function jobForSource(jobs, sourceId) {
+  const key = 'source:' + sourceId;
+  return (Array.isArray(jobs) ? jobs : []).find((job) => job && job.key === key) || null;
+}
+
+// One of learning | review | queued | ready | taught | failed | missing:
+//   - a teaching job in flight (learning) or back and waiting for the trader's approval (review) is what the card is ABOUT right now, so it wins;
 //   - a PDF whose stored file is gone and that was never taught can never be taught -> missing (a taught one keeps `taught`: what it taught
 //     is already in the profile; the card still flags the missing file separately);
 //   - anything else follows the record's own status, defaulting to queued for an unknown value.
-export function sourceCardState(source) {
+// A failed job is not a state of its own: the card keeps its record state and shows the error beside a retry.
+export function sourceCardState(source, job) {
+  if (job && job.phase === 'working') return 'learning';
+  if (job && job.phase === 'review') return 'review';
   const s = source || {};
   const status = STATES.indexOf(s.status) > -1 && s.status !== 'missing' ? s.status : 'queued';
   if (s.kind === 'pdf' && s.fileAvailable === false && status !== 'taught') return 'missing';
@@ -60,7 +70,8 @@ export function sourceCardState(source) {
 //   link (website / YouTube): added -> read -> taught. "read" is done only once there is a digest to teach from (a YouTube link that was
 //     fetched but has no captions still needs the trader's transcript, so it is not "read" yet).
 //   PDF: added -> stored -> taught. A PDF is never read server-side; it is "stored" while its file is available.
-export function sourceSteps(source) {
+//   The last step follows the teaching job too: working (the engine is learning), review (waiting for approval), failed (the last attempt failed).
+export function sourceSteps(source, job) {
   const s = source || {};
   const state = sourceCardState(s);
   const isPdf = s.kind === 'pdf';
@@ -70,7 +81,10 @@ export function sourceSteps(source) {
   else if (state === 'failed') middleState = 'failed';
   else middleState = text(s.digest) || state === 'taught' ? 'done' : 'current';
   let taughtState;
-  if (state === 'taught') taughtState = 'done';
+  if (job && job.phase === 'working') taughtState = 'working';
+  else if (job && job.phase === 'review') taughtState = 'review';
+  else if (job && job.phase === 'failed' && state !== 'taught') taughtState = 'failed';
+  else if (state === 'taught') taughtState = 'done';
   else if (middleState === 'done') taughtState = 'current';
   else taughtState = 'todo';
   return [
@@ -80,11 +94,13 @@ export function sourceSteps(source) {
   ];
 }
 
-// How many sources are in each state, for the summary chips above the cards (states with none are simply absent).
-export function summarizeSourceStates(sources) {
-  const counts = { queued: 0, ready: 0, taught: 0, failed: 0, missing: 0 };
-  (Array.isArray(sources) ? sources : []).forEach((source) => { if (source) counts[sourceCardState(source)] += 1; });
+// How many sources are in each state, for the summary chips above the cards (states with none are simply absent). With the teaching jobs
+// passed in, a source being learned from or awaiting approval is counted there instead of under its record status, so the total still adds up.
+export function summarizeSourceStates(sources, jobs) {
+  const counts = { learning: 0, review: 0, queued: 0, ready: 0, taught: 0, failed: 0, missing: 0 };
+  (Array.isArray(sources) ? sources : []).forEach((source) => { if (source) counts[sourceCardState(source, jobForSource(jobs, source.id))] += 1; });
   return counts;
 }
 
-export const SOURCE_STATES = STATES;
+// Every state a card can be in, in the order the summary lists them.
+export const SOURCE_STATES = ['learning', 'review', 'queued', 'ready', 'taught', 'failed', 'missing'];

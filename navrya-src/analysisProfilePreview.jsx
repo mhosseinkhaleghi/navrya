@@ -3,6 +3,8 @@ import { Panel } from '../public/pages/shared/navrya/components/core/Panel.jsx';
 import { Icon } from '../public/pages/shared/navrya/components/core/Icon.jsx';
 import { Button } from '../public/pages/shared/navrya/components/forms/Button.jsx';
 import { EngineLearningPanel } from './engineLearning.jsx';
+import { useTeachJobs } from './analysisProfileTeachActivity.jsx';
+import { dismissTeachJob } from './analysisProfileTeachJobs.js';
 import { AiErrorNotice } from './analysisProfileAiStatus.jsx';
 import { toAiError } from './analysisProfileAiErrors.js';
 import { trt, trDigits } from './analysisProfileTrainingCopy.js';
@@ -47,6 +49,11 @@ export function PreviewTab({ profile, lang }) {
   // translated, specific message with a Retry that re-runs generate() - the same request, the same profile context.
   const [error, setError] = React.useState(null);
   const [correcting, setCorrecting] = React.useState(null); // the observation being corrected, or null
+  // A correction is a teaching job (analysisProfileTeachJobs.js) and keeps running if the trader leaves this tab - the sample they wrote it against
+  // does not survive that, so a correction that is running, or waiting for approval, is listed below the sample on its own.
+  const teachJobs = useTeachJobs(profile.id);
+  const shownKey = correcting !== null && observations[correcting] ? 'correction:' + observations[correcting].title : null;
+  const detachedCorrections = teachJobs.filter((job) => job.tab === 'preview' && job.key !== shownKey);
 
   async function generate() {
     const client = aiClient();
@@ -110,7 +117,7 @@ export function PreviewTab({ profile, lang }) {
                   {correcting === index && (
                     <EngineLearningPanel lang={lang} profile={profile}
                       preset={{
-                        title: observation.title, kind: 'correction', headingKey: 'correctingLabel', editable: true,
+                        title: observation.title, kind: 'correction', headingKey: 'correctingLabel', editable: true, jobKey: 'correction:' + observation.title, tab: 'preview',
                         text: `Sample observation "${observation.title}": ${observation.detail}`,
                         onClose: () => setCorrecting(null)
                       }}
@@ -122,6 +129,21 @@ export function PreviewTab({ profile, lang }) {
           )}
         </div>
       </Panel>
+
+      {detachedCorrections.length > 0 && (
+        <Panel padding="18px 20px" data-preview-corrections="true">
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+            <span style={{ fontSize: 14, fontWeight: 600, color: 'var(--parchment)' }}>{trt(lang, 'learnCorrectionsTitle')}</span>
+            {detachedCorrections.map((job) => (
+              <EngineLearningPanel key={job.key} lang={lang} profile={profile}
+                preset={{
+                  title: job.title, kind: 'correction', headingKey: 'correctingLabel', editable: true, jobKey: job.key, tab: 'preview', text: job.request.context,
+                  onClose: job.phase === 'failed' ? () => dismissTeachJob(profile.id, job.key) : undefined
+                }} />
+            ))}
+          </div>
+        </Panel>
+      )}
     </div>
   );
 }

@@ -222,12 +222,13 @@ test('every failure code the reader, storage layer and gateway can return maps t
 
 // ---- the tab's cost discipline -----------------------------------------------------------------------
 
-test('adding and reading are free: KnowledgeTab never calls the billed ingest itself, only the reader - teaching is delegated to EngineLearningPanel', async () => {
+test('adding and reading are free: KnowledgeTab never calls the billed ingest itself, only the reader - teaching is delegated to a teaching job and the review to EngineLearningPanel', async () => {
   const text = await read('analysisProfileKnowledge.jsx');
   assert.doesNotMatch(text, /ingestLearning\(/, 'the tab must never make a billed call directly');
   assert.doesNotMatch(text, /applyLearning\(/, 'nor write learned state itself');
   assert.match(fnBody(text, 'readOne'), /client\.readSource\(/);
-  assert.match(text, /<EngineLearningPanel key=\{teaching\.id\}/);
+  assert.match(fnBody(text, 'teachFrom'), /startTeachJob\(\{/, 'the Teach button on the card starts the job (the only billed step, one explicit click)');
+  assert.match(text, /<EngineLearningPanel lang=\{lang\} profile=\{profile\}\s+preset=\{\{\s+title: source\.title/, 'the review opens in the shared panel');
 });
 
 test('a link is added THEN read straight away (free), and a queued/wizard link is only read on an explicit click', async () => {
@@ -257,31 +258,34 @@ test('a stored PDF is downloaded only inside loadAttachment (i.e. on the explici
   const text = await read('analysisProfileKnowledge.jsx');
   assert.equal((text.match(/fetch\(source\.fileUrl/g) || []).length, 1, 'exactly one place downloads the file');
   assert.match(fnBody(text, 'loadPdfAttachment'), /credentials: 'same-origin'/);
-  assert.match(text, /loadAttachment: teaching\.kind === 'pdf' \? \(\) => loadPdfAttachment\(teaching\) : undefined/);
+  // Both places that hand the file to a teaching job pass it as a callback that only runs when the job starts (or is re-opened for review).
+  assert.equal((text.match(/loadAttachment: source\.kind === 'pdf' \? \(\) => loadPdfAttachment\(source\) : undefined/g) || []).length, 2, 'teachFrom + the review panel preset');
   const loadBlock = text.slice(text.indexOf('const load = React.useCallback'), text.indexOf('React.useEffect(() => { load(); }'));
   assert.ok(loadBlock.length > 50 && /listSources/.test(loadBlock), 'located the tab-open loader');
   assert.doesNotMatch(loadBlock, /loadPdfAttachment|fileUrl/, 'opening the tab must never download a PDF');
 });
 
-test('a source is marked taught only through the onTaught callback, which EngineLearningPanel invokes only after applyLearning actually ran', async () => {
+test('a source is marked taught only through the onTaught callback, which EngineLearningPanel invokes only after the job store actually applied the proposal', async () => {
   const engine = await read('engineLearning.jsx');
   const apply = fnBody(engine, 'apply');
-  assert.ok(apply.indexOf('applyLearning(') > -1 && apply.indexOf('onTaught(') > apply.indexOf('applyLearning('), 'onTaught fires after the apply');
-  assert.match(apply, /if \(saved && preset && onTaught\)/);
+  assert.ok(apply.indexOf('applyTeachJob(') > -1 && apply.indexOf('onTaught(') > apply.indexOf('applyTeachJob('), 'onTaught fires after the apply');
+  assert.match(apply, /if \(outcome\.saved\) \{[\s\S]*?if \(preset && onTaught\) onTaught\(outcome\.saved\.understanding\.version\);/);
   assert.match(fnBody(await read('analysisProfileKnowledge.jsx'), 'onTaught'), /status: 'taught', taughtUnderstandingVersion: version/);
+  assert.match(await read('analysisProfileTeachJobs.js'), /const saved = profiles\.applyLearning\(profileId, \{/, 'the one applyLearning() call lives in the job store');
 });
 
-test('the preset teach flow reuses the same single-call propose/apply path: kind is "source", the PDF is loaded before the one billed call, and a PDF-unsupported provider is reported honestly', async () => {
+test('the source teach flow reuses the same single-call propose/apply path: kind is "source", the PDF is loaded before the one billed call, and a PDF-unsupported provider is reported honestly', async () => {
   const engine = await read('engineLearning.jsx');
-  const teach = fnBody(engine, 'teach');
-  assert.equal((teach.match(/ingestLearning\(/g) || []).length, 1);
+  const jobs = await read('analysisProfileTeachJobs.js');
+  const run = fnBody(jobs, 'run');
+  assert.equal((run.match(/ingestLearning\(/g) || []).length, 1, 'the job makes exactly one billed call');
   assert.match(engine, /const teachKind = preset \? \(preset\.kind \|\| 'source'\) : kind;/, 'the Knowledge tab relies on the default (no preset.kind override) staying "source"');
-  assert.ok(teach.indexOf('preset.loadAttachment()') > -1 && teach.indexOf('preset.loadAttachment()') < teach.indexOf('ingestLearning('));
-  // The unsupported-PDF-provider case is one of the specific kinds of the shared AI error mapper (analysisProfileAiErrors.js), so the teach flow
-  // only has to hand the caught error to it - and the mapper has to know that code.
-  assert.match(teach, /setError\(toAiError\(caught\)\)/);
+  assert.ok(run.indexOf('request.loadAttachment()') > -1 && run.indexOf('request.loadAttachment()') < run.indexOf('ingestLearning('), 'the PDF is loaded before any billed call');
+  // The unsupported-PDF-provider case is one of the specific kinds of the shared AI error mapper (analysisProfileAiErrors.js), so the job only has
+  // to hand the caught error to it - and the mapper has to know that code.
+  assert.match(run, /error: toAiError\(caught\)/);
   assert.match(await read('analysisProfileAiErrors.js'), /MODEL_PDF_UNSUPPORTED/);
-  assert.match(engine, /preset \? \(teachKind === 'correction' \? 'taught_correction' : 'taught_source'\)/, 'the Knowledge tab (no preset.kind override) still records taught_source');
+  assert.match(jobs, /eventKind: 'taught_' \+ request\.kind/, 'a source teach (kind "source") still records taught_source');
 });
 
 test('the new ledger kinds the source flow writes have history labels', async () => {

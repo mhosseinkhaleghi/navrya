@@ -14,6 +14,8 @@ import { KnowledgeTab } from './analysisProfileKnowledge.jsx';
 import { ChatTab as AnalysisProfileChatTab } from './analysisProfileChat.jsx';
 import { PreviewTab } from './analysisProfilePreview.jsx';
 import { ProfileReport, UsageSummary } from './analysisProfileReport.jsx';
+import { TeachActivityBar } from './analysisProfileTeachActivity.jsx';
+import { openTeachJob } from './analysisProfileTeachJobs.js';
 import { AiReadinessBar } from './analysisProfileAiStatus.jsx';
 import { trt, trDigits } from './analysisProfileTrainingCopy.js';
 
@@ -435,6 +437,10 @@ function ProfileDetail({ profile, lang, dtab, setDtab, queuedLinks, onBack, onEd
           }}>{label}</button>
         ))}
       </div>
+
+      {/* Teaching the engine keeps running while the trader is on another tab: this bar follows them through every tab of the profile, and its
+          Open button takes them to the tab (and the review) where the result waits. */}
+      <TeachActivityBar lang={lang} profileId={profile.id} onOpen={(job) => { openTeachJob(profile.id, job.key); setDtab(job.tab); }} />
 
       {/* The tabs that make a billed AI call say, once, how that call will be served (own key vs platform) - never the key itself. */}
       {AI_TABS.indexOf(dtab) > -1 && <AiReadinessBar lang={lang} />}

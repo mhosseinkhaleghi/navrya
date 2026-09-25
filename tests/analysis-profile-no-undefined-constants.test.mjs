@@ -26,7 +26,7 @@ const FILES = [
   'analysisProfileOnboarding.jsx', 'analysisProfileRite.jsx', 'analysisProfilesView.jsx', 'analysisProfileConcepts.jsx',
   'analysisProfileMemory.jsx', 'analysisProfileKnowledge.jsx', 'analysisProfileChat.jsx',
   'analysisProfilePreview.jsx', 'analysisProfileReport.jsx', 'analysisProfileBrain.jsx', 'engineLearning.jsx', 'reportCharts.jsx',
-  'analysisProfileAiStatus.jsx', 'analysisProfileDna.jsx', 'analysisProfileMemorySync.jsx', 'analysisProfileMaturity.js', 'analysisProfileKnowledgeCards.js'
+  'analysisProfileAiStatus.jsx', 'analysisProfileDna.jsx', 'analysisProfileMemorySync.jsx', 'analysisProfileMaturity.js', 'analysisProfileKnowledgeCards.js', 'analysisProfileTeachActivity.jsx', 'analysisProfileTeachJobs.js'
 ];
 
 const KNOWN_GLOBALS = new Set([

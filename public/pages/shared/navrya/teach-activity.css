@@ -1,0 +1,195 @@
+/* Analysis Profile › "the engine is learning" (ARCHITECTURE.md §7.25).
+
+   The visible side of a teaching job that keeps running while the trader is elsewhere (navrya-src/analysisProfileTeachJobs.js): the
+   animated activity indicator (`.nv-learn`), the bar that follows the trader through every tab of the profile (`.nv-teachbar`), and the
+   glow on a source card whose engine is learning (`[data-source-job="working"]`).
+
+   The motion says "a request is in flight" - it is deliberately NOT a progress bar: the model call has no measurable progress, so nothing
+   here counts up towards a finish. It stops completely under prefers-reduced-motion; the words and the real elapsed time remain.
+
+   Logical properties only. Keyframes that must travel sideways (the sweeping line) are flipped for RTL below, the same way profile-card.css
+   flips its gradients. Imported by navrya/styles.css, so no character page had to change. */
+
+.nv-learn {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-inline-size: 0;
+}
+
+.nv-learn-orb {
+  position: relative;
+  flex: none;
+  inline-size: 36px;
+  block-size: 36px;
+}
+.nv-learn-ring,
+.nv-learn-core {
+  position: absolute;
+  border-radius: 50%;
+}
+.nv-learn-ring {
+  inset: 0;
+  border: 1.5px solid var(--char-accent);
+  opacity: 0;
+  animation: nv-learn-ring 2.4s ease-out infinite;
+}
+.nv-learn-ring--late { animation-delay: 1.2s; }
+.nv-learn-core {
+  inset: 11px;
+  background: var(--char-accent);
+  box-shadow: 0 0 14px var(--char-glow);
+  animation: nv-learn-core 1.6s ease-in-out infinite;
+}
+
+/* The same orb, small enough for a step line. */
+.nv-learn-orb--mini { inline-size: 15px; block-size: 15px; }
+.nv-learn-orb--mini .nv-learn-core { inset: 4px; box-shadow: 0 0 6px var(--char-glow); }
+
+.nv-learn-body {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-inline-size: 0;
+  flex: 1;
+}
+.nv-learn-title {
+  display: inline-flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 6px;
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--char-accent);
+}
+.nv-learn-dots {
+  display: inline-flex;
+  gap: 3px;
+}
+.nv-learn-dots span {
+  inline-size: 4px;
+  block-size: 4px;
+  border-radius: 50%;
+  background: currentColor;
+  animation: nv-learn-dot 1.2s ease-in-out infinite;
+}
+.nv-learn-dots span:nth-child(2) { animation-delay: .18s; }
+.nv-learn-dots span:nth-child(3) { animation-delay: .36s; }
+
+.nv-learn-line {
+  position: relative;
+  display: block;
+  block-size: 3px;
+  border-radius: 2px;
+  overflow: hidden;
+  background: rgba(244, 234, 215, .08);
+}
+.nv-learn-line::after {
+  content: '';
+  position: absolute;
+  inset-block: 0;
+  inset-inline-start: 0;
+  inline-size: 40%;
+  border-radius: inherit;
+  background: linear-gradient(90deg, transparent, var(--char-accent), transparent);
+  animation: nv-learn-sweep 1.5s ease-in-out infinite;
+}
+[dir="rtl"] .nv-learn-line::after { animation-name: nv-learn-sweep-rtl; }
+
+.nv-learn-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 2px 12px;
+  font-size: 11px;
+  line-height: 1.7;
+  color: var(--text-dim);
+}
+
+/* A source card whose engine is learning breathes softly, so it reads as "busy" from across the page. */
+[data-source-job="working"] {
+  animation: nv-learn-card 2.6s ease-in-out infinite;
+}
+/* ...and one whose result is waiting for the trader's approval is set apart in gold - it needs them, it is not busy. */
+[data-source-job="review"] {
+  border-color: var(--gold-warm) !important;
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--gold-warm) 35%, transparent);
+}
+
+/* The bar above every tab of a profile. */
+.nv-teachbar {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.nv-teachbar-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 14px;
+  border: 1px solid var(--border-hairline);
+  border-radius: 10px;
+  background: rgba(3, 8, 7, .5);
+}
+.nv-teachbar-row--working { border-color: color-mix(in srgb, var(--char-accent) 45%, transparent); }
+.nv-teachbar-row--ready { border-color: var(--gold-warm); background: rgba(183, 138, 74, .07); }
+.nv-teachbar-row--failed { border-color: var(--danger); background: rgba(217, 83, 79, .06); }
+.nv-teachbar-row--working .nv-learn-orb { inline-size: 30px; block-size: 30px; }
+.nv-teachbar-row--working .nv-learn-core { inset: 9px; }
+.nv-teachbar-elapsed { flex: none; font-size: 11.5px; color: var(--text-dim); }
+.nv-teachbar-text {
+  flex: 1;
+  min-inline-size: 0;
+  font-size: 12.5px;
+  line-height: 1.8;
+  color: var(--text-primary);
+  overflow-wrap: anywhere;
+}
+.nv-teachbar-icon {
+  display: grid;
+  place-items: center;
+  flex: none;
+  inline-size: 24px;
+  block-size: 24px;
+  border-radius: 50%;
+  border: 1px solid currentColor;
+}
+.nv-teachbar-row--ready .nv-teachbar-icon { color: var(--gold-warm); }
+.nv-teachbar-row--failed .nv-teachbar-icon { color: var(--danger); }
+.nv-teachbar-more { font-size: 11px; color: var(--text-dim); }
+
+@keyframes nv-learn-ring {
+  0% { transform: scale(.45); opacity: .7; }
+  100% { transform: scale(1.35); opacity: 0; }
+}
+@keyframes nv-learn-core {
+  0%, 100% { transform: scale(.85); opacity: .75; }
+  50% { transform: scale(1.1); opacity: 1; }
+}
+@keyframes nv-learn-dot {
+  0%, 80%, 100% { transform: translateY(0); opacity: .35; }
+  40% { transform: translateY(-3px); opacity: 1; }
+}
+@keyframes nv-learn-sweep {
+  0% { transform: translateX(-110%); }
+  100% { transform: translateX(260%); }
+}
+@keyframes nv-learn-sweep-rtl {
+  0% { transform: translateX(110%); }
+  100% { transform: translateX(-260%); }
+}
+@keyframes nv-learn-card {
+  0%, 100% { box-shadow: 0 0 0 1px color-mix(in srgb, var(--char-accent) 30%, transparent), 0 0 0 0 transparent; }
+  50% { box-shadow: 0 0 0 1px color-mix(in srgb, var(--char-accent) 70%, transparent), 0 0 22px color-mix(in srgb, var(--char-glow) 55%, transparent); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .nv-learn-ring,
+  .nv-learn-core,
+  .nv-learn-dots span,
+  .nv-learn-line::after,
+  [data-source-job="working"] { animation: none; }
+  .nv-learn-ring { opacity: 0; }
+  .nv-learn-core { transform: none; opacity: 1; }
+  .nv-learn-dots span { opacity: .7; }
+  .nv-learn-line::after { inline-size: 100%; opacity: .45; }
+}

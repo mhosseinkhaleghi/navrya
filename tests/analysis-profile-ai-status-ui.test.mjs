@@ -235,12 +235,13 @@ test('Concepts suggestions, the onboarding wizard, the rite and Memory learning 
     ['analysisProfileConcepts.jsx', /setSuggestError\(toAiError\(caught\)\)/, /<AiErrorNotice lang=\{lang\} error=\{suggestError\} onRetry=\{suggest\} busy=\{suggestLoading\} \/>/],
     ['analysisProfileOnboarding.jsx', /setAiSuggestError\(toAiError\(error\)\)/, /<AiErrorNotice lang=\{activeLang\} error=\{aiSuggestError\} onRetry=\{regenerateFocusSuggestions\} busy=\{aiSuggestLoading\} \/>/],
     ['analysisProfileRite.jsx', /setAiSuggestError\(toAiError\(error\)\)/, /<AiErrorNotice lang=\{activeLang\} error=\{aiSuggestError\} onRetry=\{regenerateFocusSuggestions\} busy=\{aiSuggestLoading\} \/>/],
-    ['engineLearning.jsx', /setError\(toAiError\(caught\)\)/, /<AiErrorNotice lang=\{lang\} error=\{error\} onRetry=\{teach\} busy=\{phase === 'working'\} \/>/]
+    ['analysisProfileTeachJobs.js', /error: toAiError\(caught\)/, null],
+    ['engineLearning.jsx', null, /<AiErrorNotice lang=\{lang\} error=\{error\} onRetry=\{retry\} busy=\{phase === 'working'\} \/>/]
   ];
   for (const [file, catches, notice] of cases) {
     const source = await read(file);
-    assert.match(source, catches, file);
-    assert.match(source, notice, file);
+    if (catches) assert.match(source, catches, file);
+    if (notice) assert.match(source, notice, file);
     assert.doesNotMatch(source, /WALLET_INSUFFICIENT_BALANCE/, file + ' leaves the wording to the shared mapper');
     assert.doesNotMatch(source, /aiSuggestErrorBalance|aiSuggestErrorGeneric|aiErrorBalance/, file + ' no longer carries per-surface error copy');
   }
