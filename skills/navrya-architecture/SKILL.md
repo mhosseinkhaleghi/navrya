@@ -28,6 +28,7 @@ NAVRYA is a hybrid application. The active outer shell is `index.html` plus `src
 - Keep AI credentials server-side. AI output must be validated and must not replace deterministic safety or confirmation rules.
 - Before changing a visible NAVRYA component, read its matching `public/pages/shared/navrya/components/**/*.prompt.md` design contract.
 - Do not create a competing component style, modal abstraction, state architecture, or backend service to solve a local task. Improve the existing pattern only when the task requires it and migration scope is explicit.
+- Any change that adds, removes, renames or materially changes a user-facing surface (sidebar item, page or tab, Dashboard panel, plan/wallet/entitlement behaviour, AI or Voice capability, registered AI action) MUST update the matching domain in `public/pages/shared/ai-knowledge-registry.js` in the same branch, rerun `npm run ai:knowledge:build`, and keep `tests/ai-knowledge-coverage.test.mjs` green. The feature is not done otherwise. How-to and limits of the guard: `docs/ai/knowledge-base.md` ("Keeping the Knowledge Base current").
 
 ## Read detailed references on demand
 

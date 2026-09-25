@@ -39,25 +39,23 @@ TradeJournalAIKnowledgeRegistry.search(query, options?)
 // defaults to 5.
 ```
 
-## The 12 real, registered domains
+## The registered domains
 
-| id | title | real gap honestly documented? |
-|---|---|---|
-| `dashboard` | Dashboard | three catalog panel types are unwired placeholders, excluded from the default board |
-| `sessions` | Trading Sessions | — |
-| `trade-planning` | Trade Planning & Open Positions | no standalone "Open Positions" page — deliberately cross-cutting (Dashboard panel + Session tab + Strategies Hub Positions view) |
-| `strategies` | Strategies | — |
-| `patterns` | Patterns (Pattern Registry) | — |
-| `reports` | Reports / All Trades / Trading Calendar | **legacy, unreachable from any current navigation** — "Trading Calendar" has no live React equivalent at all today |
-| `psychology` | Psychology / Mental Health Profile | distinct from "Therapist Mode" (a ChatDock mode, not this page) |
-| `ai-assistant` | AI Assistant & AI Settings | API key values are never exposed back once saved, only a masked status |
-| `community` | Community | Marketplace purchases are real records but the payment step is an explicit, disclosed mock (`MarketplacePurchase.mock: true`) |
-| `account` | Account / Profile / Subscriptions | KYC is entirely manual/admin-only, no real identity-verification provider |
-| `settings` | Settings | trading defaults are pre-fill values only — nothing hard-enforces them as a ceiling |
-| `character` | Character System / XP / Levels / Achievements | — |
+`TradeJournalAIKnowledgeRegistry.listDomains()` is the list. It is deliberately not repeated here: a count
+or table copied into a document goes stale the next time a surface ships (this doc said "12" while the
+code had 14). Read the registry, or the generated snapshot `ai-knowledge/domains.generated.json`.
 
-Every `relatedDomains` reference is verified (test) to point at a real, registered domain id — no
-dangling cross-reference.
+Every domain's own `notes` field records where the real app falls short of what a reader might assume,
+so the AI can say so plainly. Examples of what `notes` carries: a legacy page with no live navigation
+(Reports), a disclosed mock payment step (Community Marketplace), manual-only verification (KYC), a
+subsystem dormant until an admin configures it (Referral), a plan-gated feature (Panel Studio), payment
+methods shown as "coming soon" (Subscription), guards shown as "coming soon" that do nothing yet
+(Psychology's Protective tab). A domain that was written without such a note is a domain nobody checked.
+
+Every `relatedDomains` reference is verified (test) to point at a real, registered domain id - no
+dangling cross-reference. Every sidebar item, `*View.jsx`, `verifiedAgainst` path and wired Dashboard
+panel type is checked against the registry by `tests/ai-knowledge-coverage.test.mjs`; how to keep a domain
+current is in [`knowledge-base.md`](knowledge-base.md) ("Keeping the Knowledge Base current").
 
 ## Search design
 
@@ -71,9 +69,20 @@ know about my psychology"* wrongly pulled in Dashboard/Community/Character purel
 Restricting the haystack to curated `title`/`terms`/`entities` fixed this at the root, without
 resorting to an ever-growing stopword list chasing individual false positives.
 
-A short EN/FA stopword list (`a`,`an`,`the`,`is`,`in`,`i`,`my`,`what`, …) is filtered out of the
-**query's** own tokens (never a domain's own terms) — e.g. `"i"` would otherwise substring-match
-`"check-in"`.
+A short EN/FA/AR stopword list (`a`, `an`, `the`, `is`, `in`, `i`, `my`, `what`, the Persian `را`/`در`/`چیست`/`ها`, the
+Arabic `في`/`كيف`/`هل`, ...) is filtered out of the **query's** own tokens (never a domain's own terms) - e.g.
+`"i"` would otherwise substring-match `"check-in"`, and a plural suffix left over from a zero-width-non-joiner
+split (`پروفایل‌ها` -> `پروفایل`, `ها`) must never match on its own. The stopword keys go through the same letter fold
+as the query.
+
+**Persian and Arabic.** The vocabulary carries Persian and Arabic terms next to the English ones (never in
+`description`), because exact-token matching means an English-only vocabulary can never match a Persian or
+Arabic question. `tokenize()` folds Arabic yeh/kaf/teh marbuta/hamza (`ي ى ك ة أ إ آ`) to one spelling and drops
+diacritics and tatweel, on the query and the vocabulary alike, so the same word typed on either keyboard
+matches. Found via real testing: without folding the stopword keys too, the Arabic "how" (`كيف`) became the
+Persian "wallet" (`کیف`) and pulled in the Subscription domain. There is no stemming: an Arabic word carrying
+the definite article ("ال") or a possessive suffix matches only if that form is in the vocabulary, so a domain
+lists the bare and the definite form of its main nouns.
 
 ## `navigate.to` — Knowledge → Planner → a registered Action
 
@@ -83,13 +92,13 @@ navigation primitives the sidebar itself already uses — `store.setActiveId()` 
 canvas views (dashboard/strategies/settings) plus sessions, `location.hash` for the hash-routed
 pages — never arbitrary DOM mutation, and never a second navigation mechanism.
 
-`domainId` is intentionally restricted to exactly the domains that have **one real, navigable
-page** today: `dashboard`, `sessions`, `strategies`, `patterns` (lands on the same Strategies Hub
-page — its own tab isn't separately hash-addressable), `settings`, `psychology`, `ai-assistant`,
-`community`, `account`. `reports` (legacy/unreachable), `trade-planning` (no single page — genuinely
-cross-cutting) and `character` (switching character happens from Settings, not a page of its own)
-are deliberately excluded, matching those domains' own honestly-documented gaps rather than
-inventing a target for them.
+The valid `domainId` values are the keys of `NAVIGATE_TARGETS` in `navrya-src/character-app.jsx` - that object,
+not this document, is the list. They are page ids, not always registry ids (`accounts` is the prop-firm
+Accounts ledger, registry id `trading-accounts`; `account` is the profile page). A domain with no one real
+navigable page - `reports` (legacy/unreachable), `trade-planning` (spans three surfaces), `character`
+(switching is done from Settings), and the cross-cutting or tab-level domains such as `instrument-catalog`,
+`media-drive` and `session-ai-analysis` - is honestly absent from it rather than given an invented target.
+`patterns` lands on the same Strategies Hub page as `strategies`.
 
 `navigate.to` reuses the untouched, protected Workflow Engine exactly like every other action,
 including its ~3s submit-grace window — a small, honestly-disclosed pause before the app actually

@@ -16,6 +16,8 @@ The relevant skill is the operating procedure. Implementation and focused tests 
 
 `docs/README.md` maps every documentation area to one canonical source. Update that source and link to it instead of copying operational rules into another document. `HANDOFF.md` is current state, not a replacement for policy or architecture documentation.
 
+A user-facing change is not done until the AI Knowledge Base is updated - see the Knowledge Base bullet in `skills/navrya-architecture/SKILL.md` ("Safe design rules").
+
 ## Efficiency and maintainability
 
 - Start with targeted discovery: use `rg` to find the existing feature, store, API, event, test, and design contract before creating anything new.

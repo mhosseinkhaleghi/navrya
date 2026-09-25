@@ -5,8 +5,8 @@ through an automatically-maintainable, provider-independent Knowledge Base — N
 knowledge, rather than relying on a model's own general training or a hand-maintained system-prompt
 essay that inevitably drifts from the real, current app.
 
-Companion docs: [`domain-registry.md`](domain-registry.md) (LAYER A, the 12 real domains, search
-design, `navigate.to`, build scripts), [`context-builder.md`](context-builder.md) (the per-turn
+Companion docs: [`domain-registry.md`](domain-registry.md) (LAYER A, the registered domains - `listDomains()`
+is the list - search design, `navigate.to`, build scripts), [`context-builder.md`](context-builder.md) (the per-turn
 narrowing pipeline), [`entity-relationships.md`](entity-relationships.md) (the real cross-entity
 graph), [`deterministic-extraction.md`](deterministic-extraction.md) (Section 0's own required gate,
 closed before any of this was built).
@@ -21,6 +21,89 @@ closed before any of this was built).
 
 Each layer answers a genuinely different question, and the Context Builder is the only place they
 ever meet, per-turn, narrowed to what that one turn needs.
+
+## Keeping the Knowledge Base current
+
+LAYER A only helps if it describes the app that actually ships. This section is the one canonical
+how-to; the rule itself is a bullet in `skills/navrya-architecture/SKILL.md` ("Safe design rules")
+and `AGENTS.md` points there.
+
+**The rule.** Any change that adds, removes, renames or materially changes a user-facing surface -
+a sidebar item, a page or tab, a Dashboard panel, plan/wallet/entitlement behaviour, an AI or Voice
+capability, a registered AI action - updates the matching domain in
+`public/pages/shared/ai-knowledge-registry.js` **in the same branch**, reruns
+`npm run ai:knowledge:build`, and keeps `tests/ai-knowledge-coverage.test.mjs` green. The feature is
+not done otherwise.
+
+**Steps**
+
+1. **Find the owning domain.** `listDomains()` is the list - never write a domain count or table in
+   a document, it goes stale. Extend the closest domain; add a new one only for a genuinely new
+   surface (a sidebar item, a page, or a subsystem with its own rules, gating and vocabulary). Do not
+   split what is really one domain.
+2. **Read the real code first**, then fill `verifiedAgainst` with the files you actually read (a
+   trailing note such as `"navrya-src/x.jsx (PositionsView)"` is allowed). The coverage test fails
+   when a listed path no longer exists.
+3. **Write only what the code has.** Anything unreleased, admin-only, flag- or plan-gated, mocked,
+   "coming soon" or limited belongs in the domain's `notes` - the registry's founding rule is that
+   the AI never describes a capability the app does not have. Never copy a price, limit, percentage
+   or model list an admin can change; say where to read it instead.
+4. **Claim the route.** A sidebar item needs a `routes` entry of the form `"activeId: '<sidebar id>'"`.
+   A hash-routed page also needs its hash in `HASH_DOMAINS` in `ai-context-builder.js`, so a question
+   asked on that page always carries that page's domain (see `context-builder.md`).
+5. **Dashboard panel types.** List every wired panel id in the dashboard domain's
+   `board panel types (by id): a, b, c` capabilities entry (the coverage test compares it with
+   `panelBody()` and `catalog()` in `dashboardView.jsx`).
+6. **Write the vocabulary** (next section), including Persian and Arabic.
+7. **Keep it compact** (see "Size budget" in `context-builder.md`): only `description`, `workflows`,
+   `capabilities`, `relationships` and `notes` reach the model, and one domain may not exceed the
+   per-domain ceiling enforced in `tests/ai-knowledge-registry.test.mjs`.
+8. **Regenerate and test.** `npm run ai:knowledge:build`, commit
+   `public/pages/shared/ai-knowledge/domains.generated.json`, then run
+   `node --test tests/ai-knowledge-coverage.test.mjs tests/ai-knowledge-registry.test.mjs tests/ai-knowledge-build.test.mjs tests/ai-context-builder.test.mjs`.
+
+**Search vocabulary rules.** `search()` scores only `title` + `terms` + `entities`, by exact
+whole-token match; `description` is excluded on purpose (see `domain-registry.md`). Every rule below
+exists because its opposite produced a real false positive.
+
+- Short and specific. A generic word on its own ("ai", "plan", "code", "open", the Persian "حال" that
+  appears in every "در حال ...") makes the domain match unrelated questions.
+- Both forms of a noun the trader will type: singular and plural in English (`strategy`,
+  `strategies`), and in Arabic the bare and the definite ("ال") form.
+- Do not put field lists such as `{id,name,date}` in `entities`: their tokens (`id`, `name`) are
+  searched. They never reach the model, so they add cost without value.
+- No zero-width non-joiner inside a term - write two words with a space (`ماشین حساب`). A query's
+  own ZWNJ splits into base word + suffix, so `پروفایل‌ها` still finds `پروفایل`.
+
+**Persian and Arabic terms are required.** Every domain needs Persian and Arabic terms (`terms` and
+`entities` only, never `description`) for its core concepts, using the words the app's own fa/ar UI
+uses. Without them a Persian or Arabic question can never match, because the English vocabulary
+shares no token with it. `search()` folds Arabic yeh/kaf/teh marbuta/hamza and drops diacritics on
+both sides, so the same word typed on either keyboard matches, and it ignores common Persian/Arabic
+function words. `tests/ai-knowledge-registry.test.mjs` fails a domain with no Persian or no Arabic
+term, and asserts one English, one Persian and one Arabic question finds each reworked domain first.
+Add such a test case for a new domain.
+
+**Where it is enforced.** `npm test` runs `node --test tests/*.test.mjs`, which includes
+`tests/ai-knowledge-coverage.test.mjs` and (through `tests/ai-knowledge-build.test.mjs`)
+`ai:knowledge:check`. `scripts/push-to-dev.sh` and the verify-dev, staging and production workflows
+all run `npm test` - there is no second pipeline. The coverage test fails when:
+
+- a sidebar id in `navItems()` (`navrya-src/character-app.jsx`) is claimed by no domain route and is
+  not in the test's `SIDEBAR_ID_ALLOWLIST`;
+- a path in any domain's `verifiedAgainst` no longer exists;
+- a `navrya-src/*View.jsx` is in no domain's `verifiedAgainst` and not in `VIEW_ALLOWLIST`;
+- a wired Dashboard panel type is missing from the dashboard domain (or a listed one is gone).
+
+An allowlist entry needs a one-line reason and is only for something with genuinely nothing to
+describe - never a way to silence a new page. A stale allowlist entry fails the test too. The failure
+message says what to do.
+
+**What the guard cannot do.** It catches *missing* coverage of a surface. It cannot tell that the
+wording inside an existing domain went stale (a renamed tab, a changed limit, a new plan gate), that
+a Persian term is good, or that a description is accurate. Only `*View.jsx` files, sidebar ids and
+Dashboard panels are checked mechanically; modals, tabs inside a view, registered AI actions and
+plan/wallet behaviour are not. Those depend on the same-branch rule above.
 
 ## Foundations explicitly not redesigned
 

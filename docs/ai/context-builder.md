@@ -26,9 +26,11 @@ TradeJournalAIContextBuilder.debugLastPackage()
 
 ## The narrowing pipeline
 
-1. **Current UI domain always seeds the set** — `navigation.activeId` (the three React canvas
-   views + sessions) and `window.location.hash` (the hash-routed pages: psychology/ai-assistant/
-   community/account) both map to real domain ids. This runs **before** any lexical search, and a
+1. **Current UI domain always seeds the set** — `navigation.activeId` (the React canvas views:
+   dashboard/sessions/accounts/strategies/settings) and `window.location.hash` (the hash-routed pages)
+   both map to real domain ids. The hash table is `HASH_DOMAINS` in `ai-context-builder.js`: `#mindset`,
+   `#ai-settings`, `#community`, `#support`, and `#account/...` - where the Subscriptions and Referral tabs
+   add their own domain alongside the Account one (every matching entry contributes). This runs **before** any lexical search, and a
    search result never *replaces* it — only adds to it.
 2. **`ai-knowledge-registry.js`'s own deterministic `search(message)`** adds any domain the
    message's own wording clearly references (e.g. a cross-domain question mentioning "Patterns" on
@@ -70,6 +72,27 @@ Server-side, `server/pattern-ai-server.mjs`'s `buildProductContextText()` render
 clearly delimited reference block — see `knowledge-base.md`'s own prompt-injection-boundary
 section for the exact SYSTEM POLICY / PRODUCT KNOWLEDGE / LIVE STATE / USER DATA / USER MESSAGE
 separation.
+
+## Size budget
+
+Only these fields of a domain reach the model (`shapeProductContextForWire()` in `chat-dock-core.js`): `id`,
+`title`, `description`, `workflows`, `capabilities`, `relationships`, `notes`. `routes`, `entities`, `terms`,
+`relatedDomains` and `verifiedAgainst` never leave the browser (so `debugLastPackage().approxTokens`, which measures
+the whole entry, over-reports).
+
+Nothing caps a turn beyond how the set is built: at most 3 page-seeded domains (the Strategies page seeds
+strategies + patterns + trade-planning) plus at most 5 from `search()` (its default `limit`), each once - so **at most 8
+domains**. Nothing capped a domain's *size*, so two tests do:
+
+- `tests/ai-knowledge-registry.test.mjs` - no single domain's model-visible text may exceed 2600 characters (~650 tokens);
+- `tests/ai-context-builder.test.mjs` - the worst realistic turn (strategies page + a question naming six domains) stays
+  at or under 8 domains and 20000 characters of product knowledge.
+
+A dated snapshot, measured 2026-09-25 with 21 domains: a page-seeded turn on Sessions, Dashboard or Strategies is about
+4.2-4.8K characters (~1.1-1.2K tokens); the worst case above is about 15.5K characters (~3.9K tokens). Re-measure rather
+than trusting these numbers after adding a domain. `search()` keeps registration order on a tie, so a newer domain loses
+an exact tie to an older one; the per-language tests in `ai-knowledge-registry.test.mjs` assert the owning domain comes
+first for one question each.
 
 ## Token-budget observability
 
