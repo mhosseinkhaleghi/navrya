@@ -151,10 +151,18 @@ const SPEAK_SAFETY_TIMEOUT_MS = 20000;
 // OpenAI's own delegation guide (delegation firing is "under the model's discretion", with no
 // documented ordering or firing guarantee relative to when NAVRYA's own backend finishes
 // responding). Well under SPEAK_SAFETY_TIMEOUT_MS so the existing overall stall guard still applies
-// on top; if this elapses with no delegation ever pairing to the turn, speak() reports an honest,
-// narrow error (onSpeakError) rather than silently resolving as if nothing needed to happen - the
-// confirmed production defect ("produce written text but no speech") this replaces.
-const SPEAK_DELEGATION_WAIT_MS = 4000;
+// on top; if this elapses with no delegation ever pairing to the turn, speak() reports it
+// (onSpeakError, a diagnostic) and then speaks the reply anyway with delegation_id:null.
+// Live-session probe (2026-09-25, real gpt-live-1, the exact instructions the server mints): a
+// spoken QUESTION ("what was my win rate this week?") produced input transcript deltas but NO
+// delegation.created at all, while an action request ("go to Accounts and create an account")
+// produced one ~20ms after its last transcript fragment. So a missing delegation is the ordinary
+// case for most conversational turns, never an edge case - the old "report and stay silent" path
+// left every question unspoken and the console stuck on PROCESSING. The same probe confirmed a
+// delegation_id:null commentary is spoken verbatim (Persian and English). The wait itself is short
+// because a delegation that is coming arrives at the end of the utterance, i.e. before the turn is
+// even flushed and long before NAVRYA's own backend reply is ready.
+const SPEAK_DELEGATION_WAIT_MS = 1500;
 // commentary.append is documented as accepting a plain string "limited to 500 tokens per append" -
 // a real token count this module cannot compute client-side. Deliberately conservative (assumes as
 // few as ~2 characters per token, safe for non-Latin scripts too) rather than guessing a generous
@@ -257,6 +265,10 @@ export function createGptLiveSession(options) {
   // still waiting on a delegation) - see speak()'s own comment for why that timing matters.
   let activeSpeakToken = null;
   let pendingSpeakSettle = null;
+  // Set while the in-flight speak() call's commentary names a real delegation - re-sends that same
+  // reply with delegation_id:null if the session rejects the id (see the error branch of
+  // handleDataChannelMessage). Cleared when that call settles.
+  let retryCommentaryWithoutDelegation = null;
   let outputTranscriptQuietTimer = null;
   let inputTranscriptQuietTimer = null;
   let speaking = false;
@@ -287,9 +299,9 @@ export function createGptLiveSession(options) {
   const onOutputAudioBufferEvent = options.onOutputAudioBufferEvent || function () {};
   const onBargeIn = options.onBargeIn || function () {};
   // DELEGATION-CORRELATION REPAIR: optional, additive (like every other capability-gated callback
-  // in this file) - fired when a turn's own reply could not actually be spoken because no
-  // delegation ever paired with it inside SPEAK_DELEGATION_WAIT_MS (see speak()'s own comment).
-  // Deliberately NOT routed through onError()/VOICE_STATES.ERROR: a single missed reply is a
+  // in this file) - fired when no delegation ever paired with a turn inside
+  // SPEAK_DELEGATION_WAIT_MS (see speak()'s own comment). A diagnostic only: that reply is still
+  // spoken, with delegation_id:null. Deliberately NOT routed through onError()/VOICE_STATES.ERROR: a single missed pairing is a
   // narrow, per-turn event, not a connection failure - forcing the whole session into ERROR over
   // one unlucky turn would be a real UX regression (Voice becoming unusable after one edge case)
   // the task's own "no regressions in UI behavior" constraint forbids. A caller that never passes
@@ -568,6 +580,17 @@ export function createGptLiveSession(options) {
     try { message = JSON.parse(raw); } catch (_) { return; }
     if (message.type === 'error' || message.error) {
       const detail = message.error || message;
+      // A rejected delegation_id is a command error, not a session failure (live probe: a
+      // commentary.append naming a delegation the session does not know returns
+      // {type:'invalid_request_error', param:'delegation_id', message:'Unknown client delegation.'}
+      // and the session keeps running). The reply it carried is re-sent once with
+      // delegation_id:null instead of ending Voice over it.
+      if (detail && detail.param === 'delegation_id') {
+        const retry = retryCommentaryWithoutDelegation;
+        retryCommentaryWithoutDelegation = null;
+        if (retry) retry();
+        return;
+      }
       const error = new Error(`GPT_LIVE_SESSION_ERROR_${(detail && detail.code) || 'UNKNOWN'}`);
       error.code = error.message;
       failAndCleanup(error, failureStage(error));
@@ -929,27 +952,38 @@ export function createGptLiveSession(options) {
   // ai-voice-playback-controller.js's enqueue()) - only its gptLiveTurnId field is read here, when
   // present, to look up the turn's own correlated delegation (see DELEGATION-CORRELATION REPAIR
   // above). Resolves once the output-transcript stream actually goes quiet
-  // (OUTPUT_TRANSCRIPT_QUIET_MS's own heuristic), SPEAK_SAFETY_TIMEOUT_MS elapses, or (while still
-  // waiting on a delegation) SPEAK_DELEGATION_WAIT_MS elapses with none ever pairing - whichever
-  // comes first. Always eventually resolves (never rejects) so PlaybackController's own queue can
-  // never wedge on this call - a missing delegation is reported through onSpeakError, not a thrown/
-  // rejected promise, matching every other failure mode in this function.
+  // (OUTPUT_TRANSCRIPT_QUIET_MS's own heuristic) or SPEAK_SAFETY_TIMEOUT_MS elapses, whichever
+  // comes first. A turn with no delegation after SPEAK_DELEGATION_WAIT_MS is still spoken, with
+  // delegation_id:null (reported through onSpeakError as a diagnostic). Always eventually resolves
+  // (never rejects) so PlaybackController's own queue can never wedge on this call.
   function speak(text, entry) {
     if (!text || !dc || dc.readyState !== 'open') return Promise.resolve();
     const turnId = entry && entry.gptLiveTurnId != null ? entry.gptLiveTurnId : null;
+
+    const turnSeqAtCall = flushedTurnSeq;
 
     return new Promise((resolve) => {
       let settled = false;
       let safetyTimer = null;
       let delegationWaitTimer = null;
+      let retryFn = null;
       function settleOnceOuter() {
         if (settled) return;
         settled = true;
         if (safetyTimer) clearTimeout(safetyTimer);
         if (delegationWaitTimer) clearTimeout(delegationWaitTimer);
         if (turnId != null) pendingDelegationWaiters.delete(turnId);
+        if (retryFn && retryCommentaryWithoutDelegation === retryFn) retryCommentaryWithoutDelegation = null;
         pendingSpeakSettle = null;
         resolve();
+      }
+      // The safety timeout firing with no output ever started means this reply was never heard -
+      // the console must not stay on PROCESSING for the rest of the session (flushTranscript() set
+      // it; only real output or an interrupt ever moved it on). Left alone when a newer turn has
+      // flushed since, because PROCESSING then belongs to that turn.
+      function settleAfterSafetyTimeout() {
+        if (!settled && !speaking && state === VOICE_STATES.PROCESSING && flushedTurnSeq === turnSeqAtCall) setState(VOICE_STATES.LISTENING);
+        settleOnceOuter();
       }
       // Wired for the WHOLE lifetime of this call, at every phase (waiting on a delegation, or
       // already sending commentary) - interrupt()/teardown() only ever need this one slot to
@@ -958,6 +992,11 @@ export function createGptLiveSession(options) {
 
       function sendCommentaryAndAwaitSettle(delegationId) {
         if (settled || !dc || dc.readyState !== 'open') { settleOnceOuter(); return; }
+        // This turn is being answered now - it must never claim a later delegation.created. Before
+        // this, a turn the model never delegated (most questions - see SPEAK_DELEGATION_WAIT_MS)
+        // stayed first in the FIFO forever and took the NEXT turn's delegation, which then waited
+        // for nothing.
+        if (turnId != null) { const unpairedAt = unpairedFlushedTurnIds.indexOf(turnId); if (unpairedAt !== -1) unpairedFlushedTurnIds.splice(unpairedAt, 1); }
         // Only set once commentary is actually about to be sent - not while still waiting on a
         // delegation - so a stray output_transcript.delta can never be mis-attributed to a call
         // that has not sent anything yet (see activeSpeakToken's own declaration comment).
@@ -967,8 +1006,13 @@ export function createGptLiveSession(options) {
         if (audioSinkNeedsRebuild) { resetAudioSink(); audioSinkNeedsRebuild = false; }
         resumeLocalAudio();
         const verbatim = 'Speak exactly the following sentence, verbatim, in the same language it is written in, with no paraphrasing, no additions, and no omissions: ' + text;
-        send({ type: 'session.commentary.append', delegation_id: delegationId, content: verbatim.length > COMMENTARY_MAX_CHARS ? verbatim.slice(0, COMMENTARY_MAX_CHARS) : verbatim });
-        safetyTimer = setTimeout(settleOnceOuter, SPEAK_SAFETY_TIMEOUT_MS);
+        const content = verbatim.length > COMMENTARY_MAX_CHARS ? verbatim.slice(0, COMMENTARY_MAX_CHARS) : verbatim;
+        send({ type: 'session.commentary.append', delegation_id: delegationId, content: content });
+        if (delegationId != null) {
+          retryFn = () => { if (!settled && activeSpeakToken === token) send({ type: 'session.commentary.append', delegation_id: null, content: content }); };
+          retryCommentaryWithoutDelegation = retryFn;
+        }
+        safetyTimer = setTimeout(settleAfterSafetyTimeout, SPEAK_SAFETY_TIMEOUT_MS);
       }
 
       if (turnId == null) {
@@ -984,14 +1028,16 @@ export function createGptLiveSession(options) {
       const existing = delegationByTurnId.get(turnId);
       if (existing !== undefined) { sendCommentaryAndAwaitSettle(existing); return; }
       // A real user turn whose reply is ready before this exact turn's own delegation.created has
-      // arrived - confirmed possible (see this file's own header comment). Wait a bounded amount
-      // rather than either silently dropping the reply (the confirmed production defect this
-      // fixes) or reusing a stale delegation from a different turn.
+      // arrived. Wait a bounded amount for it (never reusing a stale delegation from a different
+      // turn), then speak with delegation_id:null - GPT-Live never delegates most conversational
+      // turns at all (see SPEAK_DELEGATION_WAIT_MS's own comment), so giving up here was what left
+      // every such reply written but never spoken.
       delegationWaitTimer = setTimeout(() => {
         pendingDelegationWaiters.delete(turnId);
+        delegationWaitTimer = null;
         if (settled) return;
         onSpeakError({ code: 'GPT_LIVE_DELEGATION_MISSING', turnId: turnId });
-        settleOnceOuter();
+        sendCommentaryAndAwaitSettle(null);
       }, SPEAK_DELEGATION_WAIT_MS);
       pendingDelegationWaiters.set(turnId, (delegationId) => {
         if (delegationWaitTimer) { clearTimeout(delegationWaitTimer); delegationWaitTimer = null; }

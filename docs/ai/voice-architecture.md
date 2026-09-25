@@ -861,14 +861,22 @@ they interact:
    `pendingUnclaimedDelegationIds` - OpenAI's delegation guide documents no correlation id on these
    events at all, so ordered-single-conversation FIFO is the honest, non-fabricated assumption).
    `speak()` for a turn whose delegation hasn't arrived yet waits, bounded
-   (`SPEAK_DELEGATION_WAIT_MS`, 4000ms), rather than silently resolving as if nothing needed to
-   happen (the confirmed defect) - a permanently missing delegation reports a narrow, additive
-   `onSpeakError({code:'GPT_LIVE_DELEGATION_MISSING'})` callback, deliberately **not** routed
-   through `onError()`/`VOICE_STATES.ERROR` (one missed reply is not a connection failure - forcing
-   the whole session into ERROR over one edge case would itself be a regression). Unprompted/
-   system-initiated speech with no `turnId` at all (the Companion opening, an AI-analysis
-   narration) is still sent, with `delegation_id:null`, instead of silently refused the way the old
-   unconditional guard refused it.
+   (`SPEAK_DELEGATION_WAIT_MS`, 1500ms), then **speaks the reply with `delegation_id:null`** and
+   reports the missing pairing through the additive diagnostic
+   `onSpeakError({code:'GPT_LIVE_DELEGATION_MISSING'})` (never `onError()`/`VOICE_STATES.ERROR`).
+   A live `gpt-live-1` probe (2026-09-25, the exact server-minted instructions) showed why this
+   cannot be an error path: a spoken question produced transcript deltas but no
+   `session.delegation.created` at all, while an action request got one ~20ms after its last
+   transcript fragment, and `delegation_id:null` commentary was spoken verbatim in Persian and
+   English. The earlier "report and stay silent" behaviour left every undelegated reply written but
+   never spoken, with the console stuck on PROCESSING. A turn being answered also leaves
+   `unpairedFlushedTurnIds`, so an undelegated turn can no longer claim the next turn's delegation.
+   A safety-timeout settle with no output returns PROCESSING to LISTENING (unless a newer turn
+   flushed), and a rejected id (`error` with `param:'delegation_id'`, "Unknown client
+   delegation.") re-sends that reply once with `delegation_id:null` instead of ending Voice; every
+   other `error` still fails the session. Unprompted/system-initiated speech with no `turnId` at
+   all (the Companion opening, an AI-analysis narration) is sent with `delegation_id:null`
+   directly.
 4. **Interrupted audio could resume on the next reply.** GPT-Live's own "Stop speaking immediately"
    instruction is best-effort only (no confirmed client-cancel event exists), so audio for an
    interrupted reply can still be arriving on the same continuous WebRTC track when the next

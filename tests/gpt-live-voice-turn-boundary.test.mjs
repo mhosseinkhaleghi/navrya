@@ -442,28 +442,138 @@ test('two turns and two out-of-order-relative-to-expectation delegations still p
   } finally { restore(); }
 });
 
-test('a missing delegation that never arrives reports an honest onSpeakError and still resolves speak() - never a silent spoken-reply loss, never a hang', async (t) => {
+// fix/gpt-live-speak-fallback: a real gpt-live-1 session never delegated a spoken QUESTION at all
+// (only an action request got a delegation.created) - so "no delegation" is the ordinary case, and
+// the reply must still be spoken, with delegation_id:null (confirmed spoken verbatim on the real API).
+test('a turn the model never delegates is still SPOKEN, with delegation_id:null, after the bounded wait - never written-only', async (t) => {
   t.mock.timers.enable({ apis: ['setTimeout', 'Date'] });
   const restore = installFakeGlobals();
   try {
     const speakErrors = [];
     const session = createGptLiveSession(baseOptions({ onSpeakError: (detail) => speakErrors.push(detail) }));
     const pc = await connectSession(session);
-    pc.dataChannel.push(deltaMessage('Five minutes.'));
+    pc.dataChannel.push(deltaMessage('What was my win rate this week?'));
     t.mock.timers.tick(2200);
+    assert.equal(session.state(), VOICE_STATES.PROCESSING);
     // No delegation.created is ever pushed for this turn.
     let resolved = false;
-    const speakPromise = session.speak('Understood.', { gptLiveTurnId: 1 }).then(() => { resolved = true; });
-    assert.equal(pc.dataChannel.sent.some((m) => m.type === 'session.commentary.append'), false, 'commentary must never be sent with no real delegation to attach it to');
-    t.mock.timers.tick(3999);
-    assert.equal(resolved, false);
-    assert.equal(speakErrors.length, 0);
+    const speakPromise = session.speak('Sixty two percent.', { gptLiveTurnId: 1 }).then(() => { resolved = true; });
+    assert.equal(pc.dataChannel.sent.some((m) => m.type === 'session.commentary.append'), false, 'still waiting for a same-turn delegation');
+    t.mock.timers.tick(1499);
+    assert.equal(pc.dataChannel.sent.some((m) => m.type === 'session.commentary.append'), false);
     t.mock.timers.tick(1);
-    await speakPromise;
-    assert.equal(resolved, true, 'speak() must always eventually resolve - PlaybackController\'s queue must never wedge');
-    assert.equal(speakErrors.length, 1);
+    const commentary = pc.dataChannel.lastSent();
+    assert.equal(commentary.type, 'session.commentary.append', 'the reply is spoken once the wait elapses');
+    assert.equal(commentary.delegation_id, null);
+    assert.match(commentary.content, /Sixty two percent\.$/);
+    assert.equal(speakErrors.length, 1, 'the missing pairing is still reported as a diagnostic');
     assert.equal(speakErrors[0].code, 'GPT_LIVE_DELEGATION_MISSING');
     assert.equal(speakErrors[0].turnId, 1);
+    pc.dataChannel.push(outputDeltaMessage('Sixty two percent.'));
+    assert.equal(session.state(), VOICE_STATES.ASSISTANT_SPEAKING);
+    t.mock.timers.tick(900);
+    await speakPromise;
+    assert.equal(resolved, true);
+    assert.equal(session.state(), VOICE_STATES.LISTENING);
+  } finally { restore(); }
+});
+
+test('an undelegated turn never steals the NEXT turn\'s delegation - the next action turn pairs with its own delegation and speaks with no wait', async (t) => {
+  t.mock.timers.enable({ apis: ['setTimeout', 'Date'] });
+  const restore = installFakeGlobals();
+  try {
+    const finals = [];
+    const session = createGptLiveSession(baseOptions({ onFinalTranscript: (text, meta) => finals.push(meta.gptLiveTurnId) }));
+    const pc = await connectSession(session);
+
+    pc.dataChannel.push(deltaMessage('What was my win rate?'));
+    t.mock.timers.tick(2200); // fallback flush, never delegated
+    const speak1 = session.speak('Sixty two percent.', { gptLiveTurnId: finals[0] });
+    t.mock.timers.tick(1500);
+    assert.equal(pc.dataChannel.lastSent().delegation_id, null);
+    pc.dataChannel.push(outputDeltaMessage('Sixty two percent.'));
+    t.mock.timers.tick(900);
+    await speak1;
+
+    // The next utterance is an action; its delegation arrives right at the end of it (as observed
+    // live), while the transcript is still accumulating.
+    pc.dataChannel.push(deltaMessage('Go to Accounts.'));
+    pc.dataChannel.push(delegationMessage('deleg-2'));
+    assert.equal(finals.length, 2, 'the delegation early-flushes ITS OWN utterance');
+    const speak2 = session.speak('Opening Accounts.', { gptLiveTurnId: finals[1] });
+    assert.equal(pc.dataChannel.lastSent().type, 'session.commentary.append', 'spoken immediately, no wait');
+    assert.equal(pc.dataChannel.lastSent().delegation_id, 'deleg-2', 'never paired to the earlier, already-answered turn');
+    pc.dataChannel.push(outputDeltaMessage('Opening Accounts.'));
+    t.mock.timers.tick(900);
+    await speak2;
+  } finally { restore(); }
+});
+
+test('a reply that never produces any output returns the console to LISTENING when the safety timeout settles it - never stuck on PROCESSING', async (t) => {
+  t.mock.timers.enable({ apis: ['setTimeout', 'Date'] });
+  const restore = installFakeGlobals();
+  try {
+    const session = createGptLiveSession(baseOptions());
+    const pc = await connectSession(session);
+    pc.dataChannel.push(deltaMessage('Go to Accounts.'));
+    pc.dataChannel.push(delegationMessage('deleg-1'));
+    assert.equal(session.state(), VOICE_STATES.PROCESSING);
+    const speakPromise = session.speak('Opening Accounts.', { gptLiveTurnId: 1 });
+    assert.equal(pc.dataChannel.lastSent().type, 'session.commentary.append');
+    t.mock.timers.tick(19999);
+    assert.equal(session.state(), VOICE_STATES.PROCESSING);
+    t.mock.timers.tick(1);
+    await speakPromise;
+    assert.equal(session.state(), VOICE_STATES.LISTENING);
+  } finally { restore(); }
+});
+
+test('the safety timeout never overrides PROCESSING that belongs to a NEWER turn', async (t) => {
+  t.mock.timers.enable({ apis: ['setTimeout', 'Date'] });
+  const restore = installFakeGlobals();
+  try {
+    const session = createGptLiveSession(baseOptions());
+    const pc = await connectSession(session);
+    pc.dataChannel.push(deltaMessage('Go to Accounts.'));
+    pc.dataChannel.push(delegationMessage('deleg-1'));
+    const speakPromise = session.speak('Opening Accounts.', { gptLiveTurnId: 1 });
+    t.mock.timers.tick(5000);
+    pc.dataChannel.push(deltaMessage('And open Sessions.'));
+    t.mock.timers.tick(2200); // a second turn flushes while the first reply is still unheard
+    t.mock.timers.tick(12800);
+    await speakPromise;
+    assert.equal(session.state(), VOICE_STATES.PROCESSING, 'the newer turn is still being processed');
+  } finally { restore(); }
+});
+
+test('a rejected delegation_id does not end Voice - the same reply is re-sent once with delegation_id:null', async (t) => {
+  t.mock.timers.enable({ apis: ['setTimeout', 'Date'] });
+  const restore = installFakeGlobals();
+  try {
+    const errors = [];
+    const session = createGptLiveSession(baseOptions({ onError: (detail) => errors.push(detail) }));
+    const pc = await connectSession(session);
+    pc.dataChannel.push(deltaMessage('Go to Accounts.'));
+    pc.dataChannel.push(delegationMessage('deleg-gone'));
+    const speakPromise = session.speak('Opening Accounts.', { gptLiveTurnId: 1 });
+    assert.equal(pc.dataChannel.lastSent().delegation_id, 'deleg-gone');
+    const sentBefore = pc.dataChannel.sent.length;
+    // Exact shape returned by the real API for an unknown delegation id.
+    pc.dataChannel.push({ type: 'error', error: { type: 'invalid_request_error', code: null, message: 'Unknown client delegation.', param: 'delegation_id' } });
+    assert.equal(errors.length, 0, 'never reported as a session failure');
+    assert.notEqual(session.state(), VOICE_STATES.ERROR);
+    assert.equal(pc.dataChannel.sent.length, sentBefore + 1);
+    assert.equal(pc.dataChannel.lastSent().type, 'session.commentary.append');
+    assert.equal(pc.dataChannel.lastSent().delegation_id, null);
+    assert.match(pc.dataChannel.lastSent().content, /Opening Accounts\.$/);
+    pc.dataChannel.push({ type: 'error', error: { type: 'invalid_request_error', code: null, message: 'Unknown client delegation.', param: 'delegation_id' } });
+    assert.equal(pc.dataChannel.sent.length, sentBefore + 1, 're-sent at most once');
+    pc.dataChannel.push(outputDeltaMessage('Opening Accounts.'));
+    t.mock.timers.tick(900);
+    await speakPromise;
+    // Any other error is still a real session failure.
+    pc.dataChannel.push({ type: 'error', error: { type: 'server_error', code: 'internal', message: 'boom' } });
+    assert.equal(session.state(), VOICE_STATES.ERROR);
   } finally { restore(); }
 });
 
