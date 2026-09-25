@@ -373,9 +373,9 @@ export function ChatResponsePopover({
         style={{
           width: '100%', maxWidth: width, boxSizing: 'border-box', overflow: 'hidden', position: 'relative',
           borderRadius: joined ? `${radius}px ${radius}px 0 0` : radius,
-          border: '1px solid var(--border-gold)', borderBottom: joined ? 0 : undefined,
+          border: '1px solid var(--border-gold-strong)', borderBottom: joined ? 0 : undefined,
           background: 'linear-gradient(180deg,color-mix(in srgb,var(--char-accent) 11%,#0B0E14) 0%,#0B0E14 60%,#0A0D12 100%)',
-          boxShadow: '0 -12px 48px rgba(0,0,0,.45),0 0 40px var(--char-glow)',
+          boxShadow: '0 -12px 48px rgba(0,0,0,.45),0 0 40px var(--char-glow),inset 0 1px 0 rgba(244,234,215,.12)',
           animation: `${leaving ? 'navrya-pop-out 170ms var(--ease-standard)' : 'navrya-pop-in 240ms var(--ease-out)'} both`,
           ...style
         }}
@@ -415,9 +415,9 @@ export function ChatResponsePopover({
         // the character's tint only at the very top, and - when `joined` - no bottom corners or
         // bottom edge of its own, so it continues straight into the ChatDock row below it.
         borderRadius: joined ? `${radius}px ${radius}px 0 0` : radius,
-        border: '1px solid var(--border-gold)', borderBottom: joined ? 0 : undefined,
+        border: '1px solid var(--border-gold-strong)', borderBottom: joined ? 0 : undefined,
         background: 'linear-gradient(180deg,color-mix(in srgb,var(--char-accent) 11%,#0B0E14) 0%,#0B0E14 38%,#0A0D12 100%)',
-        boxShadow: joined ? '0 -12px 48px rgba(0,0,0,.45),0 0 40px var(--char-glow)' : '0 26px 64px rgba(0,0,0,.6),0 0 40px var(--char-glow)',
+        boxShadow: joined ? '0 -12px 48px rgba(0,0,0,.45),0 0 40px var(--char-glow),inset 0 1px 0 rgba(244,234,215,.12)' : '0 26px 64px rgba(0,0,0,.6),0 0 40px var(--char-glow),inset 0 1px 0 rgba(244,234,215,.12)',
         animation: `${leaving ? 'navrya-pop-out 170ms var(--ease-standard)' : 'navrya-pop-in 260ms var(--ease-out)'} both`,
         transformOrigin: 'bottom center',
         ...style

@@ -3,6 +3,7 @@ import { createRoot } from 'react-dom/client';
 import { ChatDock } from '../public/pages/shared/navrya/components/assistant/ChatDock.jsx';
 import { ChatResponsePopover, MiniButton, ActionRow } from '../public/pages/shared/navrya/components/assistant/ChatResponsePopover.jsx';
 import { CompanionCard } from '../public/pages/shared/navrya/components/assistant/CompanionCard.jsx';
+import { Icon } from '../public/pages/shared/navrya/components/core/Icon.jsx';
 // OpenAI Realtime is retired as a Voice Mode transport (GPT-Live 1 migration) - only its shared
 // VOICE_STATES enum is still imported here; createVoiceSession() is never called by this file any
 // more (see docs/ai/voice-architecture.md's GPT-Live section). aiVoiceRealtime.js itself is left
@@ -122,47 +123,132 @@ function reviewFields(extraction, tradeI18n) {
   return rows;
 }
 
-// Fast-resume shortcut anchored above the dock, same glass-card language as ChatResponsePopover -
-// full browse/rename/delete management stays on the AI Assistant screen (aiAssistantView.jsx),
-// this is just "pick a recent one and keep going" without leaving the dashboard.
-function ConversationHistoryDropdown({ i18n, loading, conversations, onPick, onClose }) {
-  return (
-    <div
-      role="listbox" aria-label={i18n.t('aiDockHistory')}
+/* Conversation history in the capsule's own shape (ChatDock companion capsule, artbook plate IV):
+   while it is open it IS the panel sitting on the dock row - full width, joined flush, the same
+   opaque frame and gold corner ticks as the reply panel - instead of a small separate dropdown.
+   Every conversation can be resumed, or deleted after an inline "delete for good?" confirmation
+   (historyStore.remove(), the same server DELETE route the AI Assistant screen's bulk Clear uses).
+   A failed delete says so and leaves the row in place. */
+export function ConversationHistoryDropdown({ i18n, loading, conversations, activeId, onPick, onClose, onNewChat, onDelete }) {
+  const [confirmId, setConfirmId] = React.useState(null);
+  const [deletingId, setDeletingId] = React.useState(null);
+  const [failedId, setFailedId] = React.useState(null);
+  const locale = typeof i18n.locale === 'function' ? i18n.locale() : undefined;
+  const count = (n) => (typeof i18n.number === 'function' ? i18n.number(n, { maximumFractionDigits: 0 }) : String(n));
+  const dateText = (at) => { try { return new Date(at).toLocaleDateString(locale); } catch (_e) { return ''; } };
+
+  async function confirmDelete(id) {
+    setDeletingId(id);
+    setFailedId(null);
+    const ok = onDelete ? await onDelete(id) : false;
+    setDeletingId(null);
+    if (ok) setConfirmId(null); else setFailedId(id);
+  }
+
+  const iconButton = (icon, label, onClick, tone) => (
+    <button
+      type="button" aria-label={label} title={label} onClick={onClick}
       style={{
-        width: '100%', maxWidth: 360, boxSizing: 'border-box', maxHeight: 320, overflowY: 'auto',
-        // NAVRYA chat dock redesign: matches ChatResponsePopover.jsx's own new panel treatment -
-        // this dropdown, the Companion card, and the reply panel all render into the same ChatDock
-        // `children` slot and must read as one consistent family.
-        borderRadius: 'var(--radius-14)', border: '1px solid var(--border-gold-strong)',
-        background: 'linear-gradient(180deg,rgba(17,27,28,.97),rgba(7,11,15,.985))',
-        boxShadow: 'var(--shadow-panel),var(--glow-soft)',
-        padding: 6
+        width: 36, height: 36, flex: 'none', display: 'grid', placeItems: 'center', padding: 0, cursor: 'pointer', borderRadius: 12,
+        border: '1px solid ' + (tone === 'danger' ? 'color-mix(in srgb,var(--danger) 40%,transparent)' : 'var(--border-hairline)'),
+        background: 'transparent', color: tone === 'danger' ? 'var(--danger)' : 'var(--text-muted)'
       }}
     >
-      {loading && (
-        <div style={{ padding: 12, font: 'var(--type-body)', color: 'var(--text-muted)' }}>{i18n.t('aiDockHistoryLoading')}</div>
-      )}
-      {!loading && !conversations.length && (
-        <div style={{ padding: 12, font: 'var(--type-body)', color: 'var(--text-muted)' }}>{i18n.t('aiDockHistoryEmpty')}</div>
-      )}
-      {!loading && conversations.map((conversation) => (
-        <button
-          key={conversation.id} type="button" onClick={() => onPick(conversation.id)}
-          style={{
-            display: 'block', width: '100%', textAlign: 'start', padding: '9px 10px', borderRadius: 8,
-            border: '1px solid transparent', background: 'transparent', cursor: 'pointer', font: 'inherit'
-          }}
-          onMouseEnter={(e) => { e.currentTarget.style.background = 'rgba(244,234,215,.05)'; }}
-          onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent'; }}
-        >
-          <div style={{ font: 'var(--type-body)', color: 'var(--text-primary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{conversation.title}</div>
-          <div className="navrya-tabular" style={{ font: 'var(--type-caption)', color: 'var(--text-dim)' }}>
-            {conversation.messageCount} · {new Date(conversation.updatedAt).toLocaleDateString()}
-          </div>
-        </button>
-      ))}
-    </div>
+      <Icon name={icon} size={16} />
+    </button>
+  );
+  const tick = (side) => (
+    <span aria-hidden="true" style={{ position: 'absolute', top: 9, [side === 'start' ? 'insetInlineStart' : 'insetInlineEnd']: 9, width: 9, height: 9, pointerEvents: 'none', borderTop: '1px solid rgba(214,175,107,.55)', [side === 'start' ? 'borderInlineStart' : 'borderInlineEnd']: '1px solid rgba(214,175,107,.55)' }} />
+  );
+
+  return (
+    <section
+      aria-label={i18n.t('aiDockHistory')} data-navrya-assistant="history"
+      style={{
+        position: 'relative', width: '100%', boxSizing: 'border-box', overflow: 'hidden',
+        borderRadius: '20px 20px 0 0', border: '1px solid var(--border-gold-strong)', borderBottom: 0,
+        background: 'linear-gradient(180deg,color-mix(in srgb,var(--char-accent) 11%,#0B0E14) 0%,#0B0E14 38%,#0A0D12 100%)',
+        boxShadow: '0 -12px 48px rgba(0,0,0,.45),0 0 40px var(--char-glow),inset 0 1px 0 rgba(244,234,215,.12)',
+        animation: 'navrya-pop-in 220ms var(--ease-out) both'
+      }}
+    >
+      {tick('start')}{tick('end')}
+      <header style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '16px 12px 12px 14px', borderBottom: '1px solid var(--border-hairline)' }}>
+        <span aria-hidden="true" style={{ width: 36, height: 36, flex: 'none', borderRadius: 11, display: 'grid', placeItems: 'center', border: '1px solid color-mix(in srgb,var(--char-accent) 55%,transparent)', background: 'var(--char-active-surface)', color: 'var(--char-accent)' }}>
+          <Icon name="history" size={17} />
+        </span>
+        <div style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', gap: 2 }}>
+          <span style={{ font: 'var(--type-body)', fontSize: 15, fontWeight: 700, color: 'var(--text-primary)' }}>{i18n.t('aiDockHistory')}</span>
+          {!loading && conversations.length > 0 && (
+            <span style={{ font: 'var(--type-caption)', fontSize: 12, color: 'var(--text-muted)' }}>{count(conversations.length)}</span>
+          )}
+        </div>
+        {onNewChat && (
+          <button
+            type="button" onClick={onNewChat}
+            style={{ height: 36, flex: 'none', padding: '0 12px', borderRadius: 12, cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: 7, border: '1px solid color-mix(in srgb,var(--char-accent) 45%,transparent)', background: 'var(--char-active-surface)', color: 'var(--char-accent)', font: 'var(--type-body)', fontSize: 13, fontWeight: 600, whiteSpace: 'nowrap' }}
+          >
+            <Icon name="square-pen" size={15} />{i18n.t('aiDockNewChat')}
+          </button>
+        )}
+        {iconButton('x', i18n.t('aiDockClose'), onClose)}
+      </header>
+
+      <div className="navrya-scroll" role="list" style={{ maxHeight: 'min(44vh, 440px)', overflowY: 'auto', padding: 8, display: 'flex', flexDirection: 'column', gap: 4, boxSizing: 'border-box' }}>
+        {loading && (
+          <div style={{ padding: '14px 12px', font: 'var(--type-body)', fontSize: 14, color: 'var(--text-muted)' }}>{i18n.t('aiDockHistoryLoading')}</div>
+        )}
+        {!loading && !conversations.length && (
+          <div style={{ padding: '14px 12px', font: 'var(--type-body)', fontSize: 14, color: 'var(--text-muted)' }}>{i18n.t('aiDockHistoryEmpty')}</div>
+        )}
+        {!loading && conversations.map((conversation) => {
+          const active = conversation.id === activeId;
+          const confirming = confirmId === conversation.id;
+          return (
+            <div
+              key={conversation.id} role="listitem"
+              style={{
+                display: 'flex', alignItems: 'center', gap: 8, minHeight: 60, padding: '6px 6px 6px 10px', boxSizing: 'border-box', borderRadius: 14,
+                border: '1px solid ' + (confirming ? 'color-mix(in srgb,var(--danger) 40%,transparent)' : active ? 'color-mix(in srgb,var(--char-accent) 40%,transparent)' : 'transparent'),
+                background: confirming ? 'rgba(255,56,48,.06)' : active ? 'var(--char-active-surface)' : 'rgba(244,234,215,.025)'
+              }}
+            >
+              {confirming ? (
+                <React.Fragment>
+                  <div style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', gap: 2 }}>
+                    <span style={{ font: 'var(--type-body)', fontSize: 13.5, fontWeight: 600, color: 'var(--text-primary)' }}>{i18n.t('aiDockHistoryDeleteConfirm')}</span>
+                    <span dir="auto" style={{ font: 'var(--type-caption)', fontSize: 12, color: failedId === conversation.id ? 'var(--danger)' : 'var(--text-muted)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                      {failedId === conversation.id ? i18n.t('aiDockHistoryDeleteFailed') : conversation.title}
+                    </span>
+                  </div>
+                  <button
+                    type="button" disabled={deletingId === conversation.id} onClick={() => confirmDelete(conversation.id)}
+                    style={{ height: 36, flex: 'none', padding: '0 14px', borderRadius: 11, cursor: 'pointer', border: 0, background: 'var(--danger)', color: '#fff', font: 'var(--type-body)', fontSize: 13, fontWeight: 700, opacity: deletingId === conversation.id ? 0.6 : 1 }}
+                  >{i18n.t('aiDockHistoryDeleteYes')}</button>
+                  <button
+                    type="button" onClick={() => { setConfirmId(null); setFailedId(null); }}
+                    style={{ height: 36, flex: 'none', padding: '0 12px', borderRadius: 11, cursor: 'pointer', border: '1px solid var(--border-hairline)', background: 'transparent', color: 'var(--text-primary)', font: 'var(--type-body)', fontSize: 13 }}
+                  >{i18n.t('aiDockHistoryDeleteNo')}</button>
+                </React.Fragment>
+              ) : (
+                <React.Fragment>
+                  <button
+                    type="button" onClick={() => onPick(conversation.id)} aria-current={active ? 'true' : undefined}
+                    style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', gap: 3, padding: '4px 2px', textAlign: 'start', cursor: 'pointer', border: 0, background: 'transparent', font: 'inherit' }}
+                  >
+                    <span dir="auto" style={{ font: 'var(--type-body)', fontSize: 14, fontWeight: 600, color: 'var(--text-primary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: '100%' }}>{conversation.title}</span>
+                    <span className="navrya-tabular" style={{ font: 'var(--type-caption)', fontSize: 12, color: 'var(--text-muted)' }}>
+                      {i18n.t('aiDockHistoryMessages', { count: count(conversation.messageCount || 0) })} · {dateText(conversation.updatedAt)}
+                    </span>
+                  </button>
+                  {onDelete && iconButton('trash-2', i18n.t('aiDockHistoryDelete'), () => { setFailedId(null); setConfirmId(conversation.id); }, 'danger')}
+                </React.Fragment>
+              )}
+            </div>
+          );
+        })}
+      </div>
+    </section>
   );
 }
 
@@ -399,6 +485,26 @@ function ChatDockApp({ i18n, core, settingsStore, tradeI18n, navryaCharacter, vo
     // (Part D req 14) exactly the same way it already is for the playback queue above.
     setVoiceReplyCaption('');
     if (voiceRef.current) voiceRef.current.cancelManualFinish();
+  }
+
+  // Deletes one past conversation from the history panel (historyStore.remove() - the same server
+  // DELETE route the AI Assistant screen already uses). Deleting the conversation that is live in
+  // the dock right now also resets the dock to a fresh chat, exactly like New Chat, but keeps the
+  // history panel open so the user can go on tidying. Resolves false (the panel then says so) when
+  // the delete itself failed - the row is only removed once the server actually removed it.
+  async function deleteConversation(id) {
+    if (!historyStore || typeof historyStore.remove !== 'function') return false;
+    try {
+      await historyStore.remove(id);
+    } catch (_err) {
+      return false;
+    }
+    setHistoryList((list) => list.filter((conversation) => conversation.id !== id));
+    if (activeConversationIdRef.current === id) {
+      startNewChat();
+      setHistoryOpen(true);
+    }
+    return true;
   }
 
   async function toggleHistory() {
@@ -1465,7 +1571,7 @@ function ChatDockApp({ i18n, core, settingsStore, tradeI18n, navryaCharacter, vo
       <input ref={fileInputRef} type="file" accept="image/*" hidden onChange={onFileChosen} />
       <ChatDock
         dir={rtl ? 'rtl' : 'ltr'}
-        companion={companion} surfaceJoined={!!(popover && popover.open)}
+        companion={companion} surfaceJoined={historyOpen || !!(popover && popover.open)}
         placeholder={i18n.t('aiDockPlaceholder')}
         sendLabel={i18n.t('aiDockSend')}
         voiceState={voiceState} voiceMuted={voiceMuted} voicePermissionDenied={voicePermissionDenied}
@@ -1507,8 +1613,9 @@ function ChatDockApp({ i18n, core, settingsStore, tradeI18n, navryaCharacter, vo
       >
         {historyOpen && (
           <ConversationHistoryDropdown
-            i18n={i18n} loading={historyLoading} conversations={historyList}
+            i18n={i18n} loading={historyLoading} conversations={historyList} activeId={activeConversationIdRef.current}
             onPick={resumeConversation} onClose={() => setHistoryOpen(false)}
+            onNewChat={startNewChat} onDelete={deleteConversation}
           />
         )}
         {showCompanionCard && (
@@ -1518,7 +1625,9 @@ function ChatDockApp({ i18n, core, settingsStore, tradeI18n, navryaCharacter, vo
             onStart={welcomeStart} onWhatIs={welcomeWhatIs} onWelcomeLater={welcomeLater}
           />
         )}
-        {popover && (
+        {/* While history is open it is the panel on the dock (it replaces the reply view, like
+            switching views - see ConversationHistoryDropdown); the reply comes back on close. */}
+        {popover && !historyOpen && (
           <ChatResponsePopover
             open={popover.open} state={popover.state}
             companion={companion} joined statusLabel={i18n.t('aiDockStatusReady')}

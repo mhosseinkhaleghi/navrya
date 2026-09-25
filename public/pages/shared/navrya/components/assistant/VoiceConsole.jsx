@@ -238,10 +238,10 @@ function RowButton({ icon, label, onClick, tone, active, className, disabled }) 
 function capsuleFrame(joinedTop) {
   return {
     position: 'relative', boxSizing: 'border-box',
-    borderRadius: joinedTop ? '0 0 20px 20px' : 20, border: '1px solid var(--border-gold)',
+    borderRadius: joinedTop ? '0 0 20px 20px' : 20, border: '1px solid var(--border-gold-strong)',
     borderTop: joinedTop ? '1px solid var(--border-hairline)' : undefined,
     background: joinedTop ? '#0A0D12' : 'linear-gradient(180deg,color-mix(in srgb,var(--char-accent) 11%,#0B0E14) 0%,#0B0E14 60%,#0A0D12 100%)',
-    boxShadow: '0 26px 64px rgba(0,0,0,.6),0 0 40px var(--char-glow)'
+    boxShadow: joinedTop ? '0 26px 64px rgba(0,0,0,.6),0 0 40px var(--char-glow)' : '0 26px 64px rgba(0,0,0,.6),0 0 40px var(--char-glow),inset 0 1px 0 rgba(244,234,215,.12)'
   };
 }
 

@@ -554,14 +554,14 @@ export function ChatDock({
                 // see-through blur, so page content never bleeds through), squared top corners
                 // while joined, and the joint drawn as a hairline instead of a second gold edge.
                 borderRadius: rowRadius,
-                border: '1px solid ' + (focused ? 'var(--border-gold-strong)' : 'var(--border-gold)'),
+                border: '1px solid var(--border-gold-strong)',
                 borderTop: surfaceJoined ? '1px solid var(--border-hairline)' : undefined,
                 background: surfaceJoined
                   ? '#0A0D12'
                   : 'linear-gradient(180deg,color-mix(in srgb,var(--char-accent) 11%,#0B0E14) 0%,#0B0E14 60%,#0A0D12 100%)',
                 boxShadow: focused
-                  ? '0 26px 64px rgba(0,0,0,.6),var(--glow-soft),var(--shadow-inset-hairline)'
-                  : '0 26px 64px rgba(0,0,0,.6),0 0 40px var(--char-glow),var(--shadow-inset-hairline)',
+                  ? '0 26px 64px rgba(0,0,0,.6),var(--glow-soft),inset 0 1px 0 rgba(244,234,215,.12)'
+                  : '0 26px 64px rgba(0,0,0,.6),0 0 40px var(--char-glow),inset 0 1px 0 rgba(244,234,215,.12)',
                 transition: 'border-color 200ms var(--ease-out),box-shadow 200ms var(--ease-out),background 200ms var(--ease-out)'
               }}
             >
