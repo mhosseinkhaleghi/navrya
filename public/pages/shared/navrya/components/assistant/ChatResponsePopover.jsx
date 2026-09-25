@@ -3,6 +3,7 @@ import { Icon } from '../core/Icon.jsx';
 import { useAssistantMotion } from './motion.js';
 import { ModelGlyph } from './ModelSwitcher.jsx';
 import { CompanionSigil, EngineChip } from './CompanionSigil.jsx';
+import { DockLayoutContext } from './dockLayout.js';
 
 /* Redesigned to match code-codex/چت داک جدید/NavryaChatDock.dc.html - a persistent, resizable
    reply panel (header with a real avatar/label/height-stage rail, a message-grid stream, a
@@ -293,10 +294,15 @@ export function ChatResponsePopover({
   // `statusLabel` the header's one-line status when not thinking, `joined` the flush-on-the-row
   // shape. All optional - without them the header falls back to `title` and a plain sparkle.
   companion, statusLabel, joined = false,
+  // Capsule exact pass: the design's header history button (optional - omitted, it renders nothing).
+  onHistory, historyLabel,
   width = 680,
   style, ...rest
 }) {
   useAssistantMotion();
+  // Where the capsule sits (ChatDock) - 'under' means a dialog is open and there is only a short
+  // band below it, so the reply renders as the design's peek (see below).
+  const dockLayout = React.useContext(DockLayoutContext);
   const [mounted, setMounted] = React.useState(open);
   const [leaving, setLeaving] = React.useState(false);
   // Found via real user report + screenshot: a genuinely long, richly-structured reply (the
@@ -354,6 +360,52 @@ export function ChatResponsePopover({
   // truthy, and never mid-thinking/safety/review.
   const showFeedback = !thinking && !safety && !review && effectiveMessages && lastMessage && lastMessage.role === 'assistant' && feedback;
 
+  // The design's "peek" (artbook plate III, 2'): with a dialog open and only the short band below
+  // it (ChatDock's 'under' layout), the reply is one compact card - the portrait, the latest
+  // assistant text and the receipts - sitting in that band, so the dialog is never covered and
+  // nothing is hidden under its scrim. The mental-health safety card and the screenshot review
+  // always keep the full panel: those must never be squeezed into a peek.
+  const lastAssistant = effectiveMessages ? [...effectiveMessages].reverse().find((m) => m.role === 'assistant') : null;
+  if (dockLayout === 'under' && !safety && !review) {
+    return (
+      <div
+        data-navrya-assistant="response" data-navrya-response-variant="peek" role="status" aria-live="polite"
+        style={{
+          width: '100%', maxWidth: width, boxSizing: 'border-box', overflow: 'hidden', position: 'relative',
+          borderRadius: joined ? `${radius}px ${radius}px 0 0` : radius,
+          border: '1px solid var(--border-gold)', borderBottom: joined ? 0 : undefined,
+          background: 'linear-gradient(180deg,color-mix(in srgb,var(--char-accent) 11%,#0B0E14) 0%,#0B0E14 60%,#0A0D12 100%)',
+          boxShadow: '0 -12px 48px rgba(0,0,0,.45),0 0 40px var(--char-glow)',
+          animation: `${leaving ? 'navrya-pop-out 170ms var(--ease-standard)' : 'navrya-pop-in 240ms var(--ease-out)'} both`,
+          ...style
+        }}
+        {...rest}
+      >
+        <div style={{ display: 'flex', alignItems: 'flex-start', gap: 10, padding: '12px 10px 10px 12px' }}>
+          <CompanionSigil portrait={portrait} size={28} state={thinking ? 'thinking' : 'idle'} dot={false} />
+          <div style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', gap: 4 }}>
+            <span style={{ font: 'var(--type-caption)', fontSize: 11.5, color: 'var(--text-muted)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+              {companionName}{thinking && thinkingLabel ? ' · ' + thinkingLabel + '…' : ''}
+            </span>
+            {!thinking && lastAssistant && (
+              <p dir="auto" style={{
+                margin: 0, font: 'var(--type-body)', fontSize: 13.5, lineHeight: '23px', color: 'var(--parchment)', whiteSpace: 'pre-line',
+                display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden'
+              }}>{stripMarkdownTokens(lastAssistant.content)}</p>
+            )}
+            {thinking && <Dots />}
+            {!thinking && meta.length > 0 && (
+              <div style={{ display: 'flex', flexWrap: 'nowrap', gap: 6, overflow: 'hidden' }}>
+                {meta.slice(0, 2).map((m, i) => { const cell = metaToStat(m); return <ReceiptChip key={i} label={cell.label} value={cell.value} />; })}
+              </div>
+            )}
+          </div>
+          {onClose && <HeaderIconButton icon="x" label={sizeLabels.close} onClick={onClose} dangerHover size={32} />}
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div
       data-navrya-assistant="response" role="status" aria-live="polite"
@@ -393,6 +445,8 @@ export function ChatResponsePopover({
           )}
         </div>
 
+        {/* In the narrow side lane the name needs the room; history is always in the composer's "+" menu. */}
+        {onHistory && dockLayout !== 'side' && <HeaderIconButton icon="history" label={historyLabel} onClick={onHistory} />}
         <HeaderIconButton onClick={toggleFold} label={folded ? sizeLabels.unfold : sizeLabels.fold}>
           <span aria-hidden="true" style={{ display: 'grid', placeItems: 'center', transition: 'transform 420ms cubic-bezier(.16,1,.3,1)', transform: 'rotate(' + (folded ? '180deg' : '0deg') + ')' }}>
             <Icon name="chevron-down" size={16} />

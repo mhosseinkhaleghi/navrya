@@ -80,37 +80,24 @@ body .app-shell {
 
   [data-navrya-assistant="dock"] { left: 8px !important; right: 8px !important; bottom: max(8px, env(safe-area-inset-bottom)) !important; gap: 0 !important; max-width: none !important; }
   .navrya-dock-mascot { display: none !important; }
-  [data-navrya-assistant="dock"] [data-navrya-chat-dock] { gap: 6px !important; padding: 8px !important; }
-  [data-navrya-chat-dock] .navrya-dock-secondary-action,
-  [data-navrya-chat-dock] .navrya-dock-secondary-action + span { display: none !important; }
-  [data-navrya-chat-dock] .navrya-dock-model-switcher {
-    display: flex !important; flex: 0 1 92px; min-width: 0; overflow-x: auto; scrollbar-width: none;
-  }
-  [data-navrya-chat-dock] .navrya-dock-model-switcher::-webkit-scrollbar { display: none; }
-  [data-navrya-chat-dock] .navrya-dock-primary-action { width: 42px !important; height: 42px !important; }
-  [data-navrya-chat-dock] .navrya-dock-mic { width: 38px !important; height: 38px !important; }
-  [data-navrya-assistant="voice-console"] { width: 100%; max-height: calc(100dvh - 16px); border-radius: 12px !important; }
-  .navrya-voice-console-header { gap: 7px !important; padding: 10px 12px !important; }
-  .navrya-voice-console-model,
-  .navrya-voice-console-status { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  .navrya-voice-console-model { max-width: 96px; }
-  .navrya-voice-console-status { max-width: 82px; }
-  .navrya-voice-console-divider { display: none !important; }
+  [data-navrya-assistant="dock"] [data-navrya-chat-dock] { gap: 6px !important; padding: 8px !important; min-height: 60px !important; }
+  [data-navrya-chat-dock] .navrya-dock-primary-action { width: 44px !important; height: 44px !important; }
+  [data-navrya-chat-dock] .navrya-dock-mic { width: 40px !important; height: 40px !important; }
+  /* Capsule exact pass: the compact voice row on a phone - the waveform takes its own full-width
+     line and the controls sit on the line below it, all 44px tap targets. */
+  [data-navrya-assistant="voice-console"] { width: 100%; max-height: calc(100dvh - 16px); }
   .navrya-voice-console-content { max-height: min(34dvh, 272px) !important; }
-  .navrya-voice-console-content > div { padding: 14px 14px 10px !important; gap: 10px !important; }
-  .navrya-voice-console-caption { margin: 0 14px 8px !important; padding: 12px !important; min-height: 0 !important; }
-  .navrya-voice-console-caption p { font-size: 14px !important; line-height: 21px !important; }
+  .navrya-voice-console-header { padding: 12px 12px 4px 14px !important; }
+  .navrya-voice-console-caption p { font-size: 13.5px !important; line-height: 21px !important; }
   .navrya-voice-console-error-card { display: grid !important; grid-template-columns: 34px minmax(0, 1fr); align-items: start !important; padding: 12px !important; }
   .navrya-voice-console-error-actions { grid-column: 1 / -1; display: grid !important; grid-template-columns: repeat(2, minmax(0, 1fr)); width: 100%; }
   .navrya-voice-console-error-actions button { justify-content: center; min-width: 0; padding-inline: 8px !important; }
-  .navrya-voice-console-controls { display: grid !important; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px !important; padding: 10px 12px !important; }
-  .navrya-voice-console-mute,
-  .navrya-voice-console-type,
-  .navrya-voice-console-captions { width: 100% !important; }
-  .navrya-voice-console-main-action { grid-column: 1 / -1; width: 100%; justify-content: center; order: 4; }
-  .navrya-voice-console-volume,
-  .navrya-voice-console-speed,
-  .navrya-voice-console-footer { display: none !important; }
+  .navrya-voice-console-controls { flex-wrap: wrap !important; gap: 8px !important; padding: 6px 10px 10px !important; }
+  .navrya-voice-console-meter { flex: 1 1 100% !important; order: -1; height: 30px !important; }
+  .navrya-voice-console-sigil { display: none !important; }
+  .navrya-voice-console-timer { margin-inline-end: auto; }
+  .navrya-voice-console-controls button { width: 44px !important; height: 44px !important; }
+  .navrya-voice-console-controls .navrya-voice-console-main-action { width: auto !important; }
   [data-navrya-assistant="voice-mini"] { max-width: 100%; min-width: 0; gap: 8px !important; padding-inline: 10px !important; }
   .navrya-voice-mini-label { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .navrya-voice-mini-timer { flex: none; }
@@ -161,19 +148,23 @@ body .app-shell {
   [data-navrya-chat-dock] .navrya-dock-therapist { display: none !important; }
 }
 
-/* Companion capsule redesign: beside an open dialog (ChatDock's side lane, data-navrya-dock-layout
-   "side", desktop only) the dock is a ~376px column, so the Voice console uses the same compact
-   control grid it already uses on phones instead of a row that would overflow. */
-[data-navrya-dock-layout="side"] .navrya-voice-console-header { gap: 7px !important; padding: 10px 12px !important; }
-[data-navrya-dock-layout="side"] .navrya-voice-console-model { max-width: 150px; }
-[data-navrya-dock-layout="side"] .navrya-voice-console-status { min-width: 0; overflow: hidden; }
-[data-navrya-dock-layout="side"] .navrya-voice-console-content { max-height: min(34vh, 272px) !important; }
-[data-navrya-dock-layout="side"] .navrya-voice-console-content > div { padding: 14px 14px 10px !important; gap: 10px !important; }
-[data-navrya-dock-layout="side"] .navrya-voice-console-error-card { display: grid !important; grid-template-columns: 34px minmax(0, 1fr); align-items: start !important; padding: 12px !important; }
-[data-navrya-dock-layout="side"] .navrya-voice-console-error-actions { grid-column: 1 / -1; display: grid !important; grid-template-columns: repeat(2, minmax(0, 1fr)); width: 100%; }
-[data-navrya-dock-layout="side"] .navrya-voice-console-controls { display: grid !important; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px !important; padding: 10px 12px !important; }
-[data-navrya-dock-layout="side"] .navrya-voice-console-mute,
-[data-navrya-dock-layout="side"] .navrya-voice-console-type,
-[data-navrya-dock-layout="side"] .navrya-voice-console-captions { width: 100% !important; }
-[data-navrya-dock-layout="side"] .navrya-voice-console-main-action { grid-column: 1 / -1; width: 100%; justify-content: center; order: 4; }
-[data-navrya-dock-layout="side"] .navrya-voice-console-footer { display: none !important; }
+/* ChatDock capsule and dialogs (ChatDock.jsx marks the open dialog's full-viewport backdrop with
+   data-navrya-dock-host). One rule set for EVERY dialog - Modal.jsx and the hand-rolled backdrops
+   that never read the dock's CSS variables themselves - so no popup ever sits under the dock:
+   "side" reserves the lane beside the dialog (it re-centres into the rest of the viewport), and in
+   both layouts the backdrop keeps the dock's bottom band (0 while the dock is in the lane) and the
+   dialog's own height is capped to what is left - every one of these dialogs already scrolls
+   inside its own body. */
+[data-navrya-dock-host="side"] {
+  padding-left: calc(24px + var(--navrya-chat-dock-side-left, 0px)) !important;
+  padding-right: calc(24px + var(--navrya-chat-dock-side-right, 0px)) !important;
+}
+[data-navrya-dock-host] { padding-bottom: calc(24px + var(--navrya-chat-dock-reserved, 0px)) !important; }
+[data-navrya-dock-host] [role="dialog"][aria-modal="true"] { max-height: calc(100vh - 48px - var(--navrya-chat-dock-reserved, 0px)) !important; }
+
+/* The compact voice row in the side lane (a ~376px column): the waveform on its own line, the
+   portrait, timer and controls on the line below it. */
+[data-navrya-dock-layout="side"] .navrya-voice-console-controls { flex-wrap: wrap !important; row-gap: 6px !important; }
+[data-navrya-dock-layout="side"] .navrya-voice-console-meter { flex: 1 1 100% !important; order: -1; height: 30px !important; }
+[data-navrya-dock-layout="side"] .navrya-voice-console-timer { margin-inline-end: auto; }
+[data-navrya-dock-layout="side"] .navrya-voice-console-main-label { display: none; }

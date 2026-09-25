@@ -11,6 +11,15 @@
 // - booleans show the label with a check or a dash instead of "true"/"false".
 // Pure: every lookup is injected, so tests/chatdock-capsule.test.mjs can drive it as plain data.
 
+// The English/Spanish character titles are stored in capitals ("THE MARKET ENGINEER") for the
+// dashboard's display lettering; in the dock the companion's name reads as a name
+// ("The Market Engineer"). Persian/Arabic titles have no case and pass through unchanged.
+export function companionDisplayName(title) {
+  const text = String(title || '');
+  if (!/[A-Z]/.test(text) || text !== text.toUpperCase()) return text;
+  return text.toLowerCase().replace(/(^|[\s'-])([a-zà-ÿ])/g, (m, sep, ch) => sep + ch.toUpperCase());
+}
+
 // ai-knowledge-registry.js domain id (character-app.jsx's NAVIGATE_TARGETS) -> NAVRYA_STRINGS key.
 export const NAV_LABEL_KEYS = {
   dashboard: 'navDashboard', sessions: 'navSessions', accounts: 'navAccounts', strategies: 'navStrategies',

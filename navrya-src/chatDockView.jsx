@@ -13,7 +13,7 @@ import { createGptLiveSession } from './gptLiveVoice.js';
 import { CHARACTERS } from './characters.js';
 import { stringsFor } from './i18n.js';
 import { assetUrl } from '../public/pages/shared/navrya/components/core/AssetBase.jsx';
-import { workflowReceipts, receiptEntry } from './chatDockReceipts.js';
+import { workflowReceipts, receiptEntry, companionDisplayName } from './chatDockReceipts.js';
 
 function languageOf(i18n) { return i18n && typeof i18n.language === 'function' ? i18n.language() : 'en'; }
 
@@ -22,7 +22,7 @@ function languageOf(i18n) { return i18n && typeof i18n.language === 'function' ?
 function companionFor(i18n, navryaCharacter) {
   const titles = stringsFor(languageOf(i18n)).charTitle || {};
   return {
-    name: titles[navryaCharacter] || '',
+    name: companionDisplayName(titles[navryaCharacter] || ''),
     portrait: navryaCharacter ? assetUrl('assets/portraits/portrait-' + navryaCharacter + '.webp') : ''
   };
 }
@@ -1496,7 +1496,7 @@ function ChatDockApp({ i18n, core, settingsStore, tradeI18n, navryaCharacter, vo
           deniedTitle: i18n.t('voiceConsoleDeniedTitle'), deniedBody: i18n.t('voiceConsoleDeniedBody'), retry: i18n.t('voiceConsoleRetry')
         }}
         value={text} onValueChange={setText} onSubmit={submit} busy={busy}
-        onAdd={triggerAttach} addLabel={i18n.t('aiDockAttach')}
+        onAdd={triggerAttach} addLabel={i18n.t('aiDockAttach')} toolsLabel={i18n.t('aiDockTools')}
         onNewChat={startNewChat} newChatLabel={i18n.t('aiDockNewChat')}
         onHistory={toggleHistory} historyLabel={i18n.t('aiDockHistory')} historyActive={historyOpen}
         onToggleTherapist={() => setTherapistMode((v) => !v)}
@@ -1522,6 +1522,7 @@ function ChatDockApp({ i18n, core, settingsStore, tradeI18n, navryaCharacter, vo
           <ChatResponsePopover
             open={popover.open} state={popover.state}
             companion={companion} joined statusLabel={i18n.t('aiDockStatusReady')}
+            onHistory={toggleHistory} historyLabel={i18n.t('aiDockHistory')}
             title={popover.title || i18n.t('aiDockLauncherLabel')}
             prompt={popover.prompt} lines={popover.lines || []} messages={popover.messages}
             userLabel={i18n.t('aiDockYou')} assistantLabel={i18n.t('aiDockAssistant')}
