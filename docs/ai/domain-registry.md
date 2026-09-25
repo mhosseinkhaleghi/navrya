@@ -98,6 +98,13 @@ Accounts ledger, registry id `trading-accounts`; `account` is the profile page).
 navigable page - `reports` (legacy/unreachable), `trade-planning` (spans three surfaces), `character`
 (switching is done from Settings), and the cross-cutting or tab-level domains such as `instrument-catalog`,
 `media-drive` and `session-ai-analysis` - is honestly absent from it rather than given an invented target.
+
+A `domainId` the model returns is resolved by `navrya-src/navigateDomain.js` (`normalizeNavigateDomainId`, the
+action's `normalizeField`). Its id list must equal those keys (`tests/navigate-domain.test.mjs` checks it), and
+it also accepts the page as a user names it in fa/ar/en/es, with "the ... section/page" filler (for example
+«بخش حساب‌ها», "the accounts page", «قسم الجلسات», "Cuentas"). An unresolvable value never leaves the
+navigation waiting: `chat-dock-core.js` drops a still-waiting `navigate.to` at the start of the next turn and
+never reports `navigate-to` as an open form, so that turn is offered `navigate.to` again.
 `patterns` lands on the same Strategies Hub page as `strategies`.
 
 `navigate.to` reuses the untouched, protected Workflow Engine exactly like every other action,
