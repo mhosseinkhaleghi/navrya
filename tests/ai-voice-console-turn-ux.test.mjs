@@ -21,7 +21,9 @@ const gptLiveSrc = await readFile(path.join(root, 'navrya-src', 'gptLiveVoice.js
 
 // ---- Part D: button modes ----
 
-test('the centre pill button is real/active in exactly two live phases - ASSISTANT_SPEAKING ("Stop reply") and USER_SPEAKING ("End message") - and disabled everywhere else (PROCESSING/LISTENING/etc)', () => {
+// ChatDock capsule exact pass: in the compact voice row the live action is only rendered while it
+// can act; every other phase shows its state in the status line instead of a disabled pill.
+test('the centre pill button is real/active in exactly two live phases - ASSISTANT_SPEAKING ("Stop reply") and USER_SPEAKING ("End message") - and not offered anywhere else (PROCESSING/LISTENING/etc)', () => {
   // Slice R2 (transport repair), audit finding T12: USER_SPEAKING is only actionable when the
   // active adapter actually supports finishing a turn early (voiceSupportsManualFinish, true for
   // OpenAI Realtime, false for Gemini Live - see geminiLiveVoice.js's own comment) - see the
@@ -29,6 +31,8 @@ test('the centre pill button is real/active in exactly two live phases - ASSISTA
   assert.match(voiceConsoleSrc, /const canManualFinish = userSpeaking && voiceSupportsManualFinish;/);
   assert.match(voiceConsoleSrc, /const mainActionable = replying \|\| canManualFinish;/);
   assert.match(voiceConsoleSrc, /const mainActionHandler = replying \? onVoiceInterrupt : canManualFinish \? onVoiceEndMessage : undefined;/);
+  assert.match(voiceConsoleSrc, /\{mainActionable && \(\s*\n\s*<button\s*\n\s*type="button" className="navrya-voice-console-main-action"/);
+  assert.match(voiceConsoleSrc, /const statusLabel = thinking && voiceManualFinishPending \? strings\.endingMessage : phaseLabel;/, 'the "ending message" state still shows - in the status line');
 });
 
 test('voiceSupportsManualFinish defaults to true so every existing caller that never passes it keeps the exact prior OpenAI Realtime behavior', () => {
@@ -158,14 +162,16 @@ test('the dock row and the response surface both carry stable data selectors for
   assert.match(chatDockSrc, /data-navrya-assistant="response-surface"/);
 });
 
-// ChatDock capsule redesign: at the bottom the order is exactly as before (reply 70, below modals;
-// row 150, above them). The only 150 reply is the beside-the-modal lane, which dockSideLane.js only
-// ever returns when the lane measurably clears the dialog's rect - so the reply still never covers a
-// dialog's own fields (tests/chatdock-capsule.test.mjs covers that geometry).
+// ChatDock capsule redesign: with no dialog open the order is exactly as before (reply 70, below
+// modals; row 150, above them). The reply is 150 only beside a dialog (dockSideLane.js only returns
+// a lane that measurably clears the dialog's rect) or under one (the band the dialog's backdrop
+// reserves below it) - in neither can it cover a dialog's own fields, and at 70 it would sit dimmed
+// under the dialog's scrim (tests/chatdock-capsule.test.mjs covers both geometries).
 test('z-index separation is preserved exactly as before - the response surface stays at its existing lower layer (70), the dock row stays above modals (150); this fix only changes horizontal positioning, never the stacking order', () => {
-  assert.match(chatDockSrc, /zIndex: inLane \? 150 : 70, pointerEvents: 'none'/);
+  assert.match(chatDockSrc, /zIndex: dockLayout === 'bottom' \? 70 : 150, pointerEvents: 'none'/);
   assert.match(chatDockSrc, /\.\.\.dockPlacement, zIndex: 150,/);
-  assert.match(chatDockSrc, /const inLane = !!sideLane;/);
+  assert.match(chatDockSrc, /const inLane = dockMode === 'side' && !!sideLane;/);
+  assert.match(chatDockSrc, /const dockLayout = inLane \? 'side' : underDialog \? 'under' : 'bottom';/);
 });
 
 // NAVRYA chat dock redesign: the gap was deliberately shrunk from the original 12px, first to a

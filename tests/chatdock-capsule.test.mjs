@@ -7,7 +7,7 @@ import {
   computeSideLane, sameLane, sideForDir, sideReservePx, isLaneDialog,
   SIDECAR_WIDTH_PX, SIDECAR_EDGE_PX, SIDECAR_MIN_HEIGHT_PX
 } from '../public/pages/shared/navrya/components/assistant/dockSideLane.js';
-import { receiptEntry, workflowReceipts, NAV_LABEL_KEYS } from '../navrya-src/chatDockReceipts.js';
+import { receiptEntry, workflowReceipts, NAV_LABEL_KEYS, companionDisplayName } from '../navrya-src/chatDockReceipts.js';
 
 // ChatDock companion capsule redesign (artbook plates III/IV/VII): one flush capsule, the character
 // as the companion's identity, receipts instead of raw workflow paths, and a lane beside an open
@@ -159,35 +159,94 @@ test('the dock row opens with the character\'s portrait, not the engine mascot, 
   assert.doesNotMatch(code(sigilSrc), /onClick/, 'the sigil is decorative - never a decoy control');
 });
 
-test('the Voice console header is the same identity; the English phase code and the two decorative non-buttons are gone', () => {
-  assert.doesNotMatch(code(consoleSrc), /· VOICE|PHASE_CODE|'MIC DENIED'/);
-  assert.doesNotMatch(code(consoleSrc), /navrya-voice-console-volume|navrya-voice-console-speed|'volume-2'|>1×</);
-  assert.match(consoleSrc, /<CompanionSigil portrait=\{companion && companion\.portrait\} size=\{36\}/);
+test('voice is a state of the same capsule: one status line and one compact row, with no identity header of its own, no engine logo, no decorative non-buttons', () => {
+  const c = code(consoleSrc);
+  assert.doesNotMatch(c, /· VOICE|PHASE_CODE|'MIC DENIED'/);
+  assert.doesNotMatch(c, /navrya-voice-console-volume|navrya-voice-console-speed|'volume-2'|>1×</);
+  assert.doesNotMatch(c, /ModelGlyph|EngineChip/, 'the joined reply header is the one identity header; the thinking state never shows the engine logo');
+  assert.match(consoleSrc, /<CompanionSigil className="navrya-voice-console-sigil" portrait=\{companion && companion\.portrait\} size=\{40\}/);
+  assert.match(consoleSrc, /<VoiceMeter voiceState=\{voiceState\} muted=\{voiceMuted\} getVoiceMediaStream=\{getVoiceMediaStream\} count=\{34\} height=\{30\}/);
+  const controls = consoleSrc.slice(consoleSrc.indexOf('className="navrya-voice-console-controls"'), consoleSrc.indexOf('export function VoiceMiniBar'));
+  for (const piece of ['navrya-voice-console-mute', 'navrya-voice-console-captions', 'navrya-voice-console-type', 'navrya-voice-console-main-action', 'navrya-voice-console-end']) {
+    assert.ok(controls.includes(piece), piece + ' sits in the one control row');
+  }
+  assert.match(consoleSrc, /data-navrya-assistant="voice-mini"\s*\n\s*style=\{\{ \.\.\.capsuleFrame\(joinedTop\)/, 'the minimized row is the same capsule shape, joined like the console');
 });
 
-test('ChatDock finds real dialogs, publishes the side reserve before measuring, never retries a dialog that ignored it, and cleans up', () => {
+test('placement: no dialog = bottom; a lane that clears the dialog = side; otherwise under - the reserve is published before measuring and a dialog that ignored it is never retried', () => {
   assert.match(dockSrc, /document\.querySelectorAll\('\[role="dialog"\]\[aria-modal="true"\]'\)/);
-  const effect = dockSrc.slice(dockSrc.indexOf('const [sideLane, setSideLane]'), dockSrc.indexOf('const inLane = !!sideLane;'));
-  assert.ok(effect.indexOf('publish(true);') > -1 && effect.indexOf('publish(true);') < effect.indexOf('computeSideLane('), 'the reserve is published before the dialog is measured');
-  assert.match(effect, /if \(refused\) refused\.add\(dialog\);/);
+  const effect = dockSrc.slice(dockSrc.indexOf('const [dockMode, setDockMode]'), dockSrc.indexOf('const inLane = dockMode'));
+  assert.ok(effect.indexOf('publishSide(true);') > -1 && effect.indexOf('publishSide(true);') < effect.indexOf('computeSideLane('), 'the reserve is published before the dialog is measured');
+  assert.match(effect, /if \(!dialog\) \{ setHost\(null\); publishSide\(false\); commit\('free', null\); return; \}/);
+  assert.match(effect, /if \(lane\) \{ commit\('side', lane\); return; \}/);
+  assert.match(effect, /if \(refused\) refused\.add\(dialog\);\s*\n\s*\}\s*\n\s*publishSide\(false\);\s*\n\s*setHost\(host, 'under'\);\s*\n\s*commit\('under', null\);/);
   assert.match(effect, /new MutationObserver\(schedule\)/);
   assert.match(effect, /new ResizeObserver\(schedule\)/);
   assert.match(effect, /setSideLane\(\(prev\) => \(sameLane\(prev, lane\) \? prev : lane\)\);/);
   assert.match(effect, /root\.style\.removeProperty\('--navrya-chat-dock-side-left'\);/);
   assert.match(effect, /root\.style\.removeProperty\('--navrya-chat-dock-side-right'\);/);
-  assert.match(dockSrc, /data-navrya-dock-layout=\{inLane \? 'side' : 'bottom'\}/);
+  assert.match(dockSrc, /data-navrya-dock-layout=\{dockLayout\}/);
+  assert.match(dockSrc, /<DockLayoutContext\.Provider value=\{dockLayout\}>/);
+});
+
+test('every dialog backdrop - Modal.jsx and the hand-rolled ones - is tagged, so one CSS rule reserves the lane/band for all of them', () => {
+  const effect = dockSrc.slice(dockSrc.indexOf('const [dockMode, setDockMode]'), dockSrc.indexOf('const inLane = dockMode'));
+  assert.match(effect, /function findBackdrop\(dialog\)/);
+  assert.match(effect, /if \(position !== 'fixed'\) continue;/);
+  assert.match(effect, /rect\.width >= vw \* 0\.9 && rect\.height >= vh \* 0\.9/);
+  assert.match(effect, /el\.setAttribute\('data-navrya-dock-host', kind\)/);
+  assert.match(effect, /hostEl\.removeAttribute\('data-navrya-dock-host'\)/);
+  assert.match(responsiveCss, /\[data-navrya-dock-host="side"\] \{\s*\n\s*padding-left: calc\(24px \+ var\(--navrya-chat-dock-side-left, 0px\)\) !important;\s*\n\s*padding-right: calc\(24px \+ var\(--navrya-chat-dock-side-right, 0px\)\) !important;/);
+  assert.match(responsiveCss, /\[data-navrya-dock-host\] \{ padding-bottom: calc\(24px \+ var\(--navrya-chat-dock-reserved, 0px\)\) !important; \}/);
+  assert.match(responsiveCss, /\[data-navrya-dock-host\] \[role="dialog"\]\[aria-modal="true"\] \{ max-height: calc\(100vh - 48px - var\(--navrya-chat-dock-reserved, 0px\)\) !important; \}/);
+});
+
+test('the bottom reserve follows the layout: 0 in the lane (the dialog gets its full height back), row + peek band under a dialog, unchanged otherwise', () => {
+  assert.match(dockSrc, /var reserved = dockMode === 'side'\s*\n\s*\? 0\s*\n\s*: dockMode === 'under'\s*\n\s*\? DOCK_BOTTOM_PX \+ rowHeight \+ JOINED_GAP_PX \+ UNDER_DIALOG_ALLOWANCE_PX\s*\n\s*: 24 \+ rowHeight \+ PANEL_TO_DOCK_GAP_PX \+ POPOVER_SHORT_REPLY_ALLOWANCE_PX;/);
+  assert.match(dockSrc, /\}, \[rowHeight, dockMode\]\);/);
+  assert.match(dockSrc, /: underDialog \? \{ maxHeight: UNDER_DIALOG_ALLOWANCE_PX, overflowY: 'auto' \} : null;/, 'under a dialog the reply never grows past the reserved band');
+});
+
+test('under a dialog the reply is the design\'s peek - except the safety card and the screenshot review, which always keep the full panel', () => {
+  assert.match(popoverSrc, /const dockLayout = React\.useContext\(DockLayoutContext\);/);
+  assert.match(popoverSrc, /if \(dockLayout === 'under' && !safety && !review\) \{/);
+  assert.match(popoverSrc, /data-navrya-response-variant="peek"/);
+});
+
+test('the composer is the design\'s: portrait, input, a "+" tools menu that keeps every old control, the engine menu, one primary button', () => {
+  assert.doesNotMatch(code(dockSrc), /<ModelSwitcher|navrya-dock-secondary-action/);
+  const tools = dockSrc.slice(dockSrc.indexOf('const toolItems = ['), dockSrc.indexOf('const engineItems'));
+  assert.match(tools, /onAdd && \{ key: 'attach'/);
+  assert.match(tools, /onNewChat && \{ key: 'new'/);
+  assert.match(tools, /onHistory && \{ key: 'history'/);
+  assert.match(tools, /onToggleTherapist && \{ key: 'therapist'/);
+  assert.match(dockSrc, /const engineItems = list && onModelChange\s*\n\s*\? list\.map\(\(m\) => \(\{ key: m\.id, role: 'menuitemradio'/);
+  assert.match(dockSrc, /onSelect: \(\) => onModelChange\(m\.id\)/);
+  assert.match(dockSrc, /aria-haspopup="menu" aria-expanded=\{open \? 'true' : 'false'\}/);
+  assert.match(dockSrc, /if \(e\.key === 'Escape'\) setOpen\(false\);/);
+  assert.match(viewSrc, /toolsLabel=\{i18n\.t\('aiDockTools'\)\}/);
+});
+
+test('English/Spanish capital plate titles read as names in the dock; Persian passes through', () => {
+  assert.equal(companionDisplayName('THE MARKET ENGINEER'), 'The Market Engineer');
+  assert.equal(companionDisplayName('EL GRAN SABIO DEL MERCADO'), 'El Gran Sabio Del Mercado');
+  assert.equal(companionDisplayName('مهندس بازار'), 'مهندس بازار');
+  assert.equal(companionDisplayName('The Hunter'), 'The Hunter');
+  assert.equal(companionDisplayName(''), '');
+  assert.match(viewSrc, /name: companionDisplayName\(titles\[navryaCharacter\] \|\| ''\)/);
 });
 
 test('Modal.jsx reserves the side lane with safe 0px defaults, next to the existing bottom reserve', () => {
   assert.match(modalSrc, /padding: '24px calc\(24px \+ var\(--navrya-chat-dock-side-right, 0px\)\) calc\(24px \+ var\(--navrya-chat-dock-reserved, 0px\)\) calc\(24px \+ var\(--navrya-chat-dock-side-left, 0px\)\)'/);
 });
 
-test('in the side lane the Voice console uses the compact control grid instead of an overflowing row', () => {
-  assert.match(responsiveCss, /\[data-navrya-dock-layout="side"\] \.navrya-voice-console-controls \{ display: grid !important; grid-template-columns: repeat\(3, minmax\(0, 1fr\)\);/);
-  assert.match(responsiveCss, /\[data-navrya-dock-layout="side"\] \.navrya-voice-console-main-action \{ grid-column: 1 \/ -1;/);
+test('in the side lane the voice row wraps: the waveform on its own line, the controls below it', () => {
+  assert.match(responsiveCss, /\[data-navrya-dock-layout="side"\] \.navrya-voice-console-controls \{ flex-wrap: wrap !important;/);
+  assert.match(responsiveCss, /\[data-navrya-dock-layout="side"\] \.navrya-voice-console-meter \{ flex: 1 1 100% !important; order: -1;/);
 });
 
-test('the two new strings exist in all four languages', () => {
+test('the new strings exist in all four languages', () => {
   assert.equal((i18nSrc.match(/aiDockStatusReady: '/g) || []).length, 4);
   assert.equal((i18nSrc.match(/aiChatFeedbackWrong: '/g) || []).length, 4);
+  assert.equal((i18nSrc.match(/aiDockTools: '/g) || []).length, 4);
 });

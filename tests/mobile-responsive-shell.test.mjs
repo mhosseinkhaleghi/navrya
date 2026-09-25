@@ -70,22 +70,29 @@ test('dossier, settings, community, and AI assistant views expose phone layout h
   assert.match(responsiveCss, /\.navrya-ai-assistant-heading \{ align-items: stretch !important; flex-direction: column;/);
 });
 
+// ChatDock capsule exact pass: the phone composer is the design's own - input, the "+" tools menu
+// (attach / new chat / history / therapist mode, so nothing has to be hidden any more), the engine
+// menu and the one primary Voice/Send button at a 44px tap size; only the decorative portrait hides.
 test('the phone dock preserves its voice action while suppressing optional desktop controls', () => {
   assert.match(chatDock, /className="navrya-dock-primary-action"/);
-  assert.match(chatDock, /className="navrya-dock-secondary-action"/);
-  assert.match(responsiveCss, /\.navrya-dock-secondary-action,\s*\[data-navrya-chat-dock\] \.navrya-dock-secondary-action \+ span/);
-  assert.match(responsiveCss, /\.navrya-dock-model-switcher \{\s*display: flex !important;/);
-  assert.match(responsiveCss, /\.navrya-dock-primary-action \{ width: 42px !important; height: 42px !important; \}/);
+  assert.match(chatDock, /<DockMenu className="navrya-dock-tools"/);
+  assert.match(chatDock, /<DockMenu className="navrya-dock-engine"/);
+  assert.match(responsiveCss, /\.navrya-dock-mascot \{ display: none !important; \}/);
+  assert.match(responsiveCss, /\[data-navrya-chat-dock\] \.navrya-dock-primary-action \{ width: 44px !important; height: 44px !important; \}/);
 });
 
+// ChatDock capsule exact pass: the compact voice row on a phone keeps every control reachable -
+// the waveform moves to its own full-width line and the controls become 44px tap targets.
 test('the voice console has dedicated phone geometry rather than desktop controls that overflow', () => {
   assert.match(chatDock, /className="navrya-dock-mascot"/);
   assert.match(voiceConsole, /className="navrya-voice-console"/);
   assert.match(voiceConsole, /className="navrya-voice-console-error-card"/);
   assert.match(voiceConsole, /className="navrya-voice-console-controls"/);
   assert.match(voiceConsole, /className="navrya-voice-console-main-action"/);
-  assert.match(responsiveCss, /\.navrya-voice-console-controls \{ display: grid !important; grid-template-columns: repeat\(3, minmax\(0, 1fr\)\);/);
-  assert.match(responsiveCss, /\.navrya-voice-console-main-action \{ grid-column: 1 \/ -1;/);
+  assert.match(voiceConsole, /className="navrya-voice-console-meter"/);
+  assert.match(responsiveCss, /\.navrya-voice-console-controls \{ flex-wrap: wrap !important;/);
+  assert.match(responsiveCss, /\.navrya-voice-console-meter \{ flex: 1 1 100% !important; order: -1;/);
+  assert.match(responsiveCss, /\.navrya-voice-console-controls button \{ width: 44px !important; height: 44px !important; \}/);
   assert.match(responsiveCss, /\.navrya-voice-console-error-actions \{ grid-column: 1 \/ -1;/);
   assert.match(voiceConsole, /className="navrya-voice-mini-label"/);
   assert.match(responsiveCss, /\[data-navrya-assistant="voice-mini"\] \{ max-width: 100%; min-width: 0;/);
