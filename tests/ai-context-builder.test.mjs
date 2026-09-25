@@ -225,6 +225,22 @@ test('a hash-routed page (psychology/community/account/ai-assistant) is recogniz
   assert.ok(pkg.productKnowledge.some((d) => d.id === 'account'));
 });
 
+test('the Support page, the Subscriptions tab and the Referral tab each seed their own domain (and the Account page its own)', async () => {
+  const cases = [
+    ['#support', ['support'], ['account']],
+    ['#support/abc123', ['support'], ['account']],
+    ['#account/profile/subscriptions', ['subscription-wallet', 'account'], ['referral-affiliate']],
+    ['#account/profile/referral', ['referral-affiliate', 'account'], ['subscription-wallet']],
+    ['#account/profile/level', ['account'], ['subscription-wallet', 'referral-affiliate']]
+  ];
+  for (const [hash, expected, notExpected] of cases) {
+    const builder = await builderSandbox({ hash });
+    const ids = builder.build({ message: 'ok thanks', currentContext: { navigation: { activeId: null }, activeEntities: {} } }).productKnowledge.map((d) => d.id);
+    expected.forEach((id) => assert.ok(ids.indexOf(id) > -1, hash + ' should seed ' + id + ', got ' + ids.join(', ')));
+    notExpected.forEach((id) => assert.equal(ids.indexOf(id), -1, hash + ' must not seed ' + id));
+  }
+});
+
 // ---- future extensibility: a fake future domain works with zero Context Builder changes ----
 
 test('a newly-registered future domain becomes selectable by the Context Builder with no code changes here', async () => {
@@ -274,16 +290,17 @@ test('a narrowly-scoped single-domain question stays within a small, sane token 
   const builder = await builderSandbox({});
   const pkg = builder.build({ message: 'what is a Scenario?', currentContext: { navigation: { activeId: 'dashboard' }, activeEntities: {} } });
   const debug = builder.debugLastPackage();
-  assert.ok(pkg.productKnowledge.length < registryDomainCount(), 'a narrow question must not pull in every registered domain');
+  assert.ok(pkg.productKnowledge.length < await registryDomainCount(), 'a narrow question must not pull in every registered domain');
   assert.ok(debug.approxTokens < 1500, 'an ordinary narrow question should cost well under a token budget that would make every-turn knowledge sending expensive - got ' + debug.approxTokens);
 });
 
-function registryDomainCount() {
-  // The real, current count of required domains (see tests/ai-knowledge-registry.test.mjs's own
-  // REQUIRED_DOMAIN_IDS) - kept as a loose upper bound here, not duplicated exactly, since this
-  // test only cares that a narrow question is meaningfully smaller than "every domain", not the
-  // registry's own exact size.
-  return 12;
+async function registryDomainCount() {
+  // Asked of the real registry, never hardcoded - a count typed into a test rots the moment a
+  // domain is added. This test only cares that a narrow question is meaningfully smaller than
+  // "every domain".
+  const sandbox = { window: {} };
+  vm.runInNewContext(await source('ai-knowledge-registry.js'), sandbox, { filename: 'ai-knowledge-registry.js' });
+  return sandbox.window.TradeJournalAIKnowledgeRegistry.listDomains().length;
 }
 
 // ---- privacy: user A cannot retrieve user B's memory ----
@@ -534,4 +551,20 @@ test('Settings field question: settings-trading-defaults (background/persistent,
   assert.equal(pkg.liveContext.currentSurface.processId, 'settings-trading-defaults');
   assert.equal(pkg.liveContext.currentSurface.layer, 'background');
   assert.deepEqual(clone(pkg.liveContext.currentSurface.visibleFields.sort()), ['defaultRiskPercent', 'leverageCap', 'maxTradesPerSession']);
+});
+
+// ---- worst-case turn: a page-seeded set plus a broad, multi-domain question stays bounded ----
+
+test('the heaviest seeded page plus a broad cross-domain question stays within the documented per-turn domain and size budget', async () => {
+  const builder = await builderSandbox({});
+  const pkg = builder.build({
+    message: 'how do sessions, analysis profiles, subscription wallet, media drive, support tickets and referral commission connect with the AI analysis and the panel builder',
+    currentContext: { navigation: { activeId: 'strategies' }, activeEntities: {} }
+  });
+  // 3 page-seeded domains (strategies page) + at most the search limit (5) - see docs/ai/context-builder.md "Size budget".
+  assert.ok(pkg.productKnowledge.length <= 8, 'too many domains in one turn: ' + pkg.productKnowledge.length);
+  // What goes over the wire is shapeProductContextForWire()'s subset (chat-dock-core.js), not the whole registry entry that
+  // debugLastPackage() measures - routes/entities/terms/verifiedAgainst never leave the browser.
+  const wireChars = JSON.stringify(pkg.productKnowledge.map((d) => ({ id: d.id, title: d.title, description: d.description, workflows: d.workflows, capabilities: d.capabilities, relationships: d.relationships, notes: d.notes }))).length;
+  assert.ok(wireChars < 20000, 'a worst-case broad question should stay around 4K tokens (20000 chars) of product knowledge - got ' + wireChars);
 });

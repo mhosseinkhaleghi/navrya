@@ -11,10 +11,14 @@
   // ADDS domains a message's own wording clearly references (e.g. a cross-domain question), it
   // never REPLACES the current-page domain.
 
+  // Every matching entry contributes (a sub-route adds its own domain alongside its parent's).
   var HASH_DOMAINS = [
     [/^#mindset/, ['psychology']],
     [/^#ai-settings/, ['ai-assistant']],
     [/^#community/, ['community']],
+    [/^#support/, ['support']],
+    [/^#account\/profile\/subscriptions/, ['subscription-wallet']],
+    [/^#account\/profile\/referral/, ['referral-affiliate']],
     [/^#account/, ['account']]
   ];
 
@@ -62,10 +66,11 @@
   }
 
   function domainsForHash(hash) {
+    var ids = [];
     for (var i = 0; i < HASH_DOMAINS.length; i++) {
-      if (HASH_DOMAINS[i][0].test(hash || '')) return HASH_DOMAINS[i][1];
+      if (HASH_DOMAINS[i][0].test(hash || '')) ids = ids.concat(HASH_DOMAINS[i][1]);
     }
-    return [];
+    return ids;
   }
   // Journey Engine's own navigation.activeId only ever distinguishes the three React "canvas"
   // views (dashboard/strategies/settings) - psychology/ai-assistant/community/account are
