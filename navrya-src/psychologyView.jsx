@@ -11,7 +11,8 @@ import { MetricRow } from '../public/pages/shared/navrya/components/metrics/Metr
 import { currentNavryaCharacter } from './currentCharacter.js';
 import { openWeeklyCheckIn } from './weeklyCheckInModal.jsx';
 import { RoutineTab } from './routineTab.jsx';
-import { MoodTab, CalmRoom, BreathPreview, MOODS, BY_ID as MOOD_BY_ID } from './moodTab.jsx';
+import { MoodTab, MOODS, BY_ID as MOOD_BY_ID } from './moodTab.jsx';
+import { CalmRoom, CalmRoomPanel, BreathPreview } from './calmRoom.jsx';
 import { TherapistTab } from './therapistTab.jsx';
 import { EmotionMap, DisciplineTrend, TradeArc, TiltMeter, RatingGauge, ReadinessDial, emotionMirrorVerdict } from './psychologyCharts.jsx';
 
@@ -1129,7 +1130,7 @@ function ProtectiveTab({ i18n, psych, mhStore, profile, trades, closed, savedAt,
         </div>
         {breathPreviewOpen && (
           <div style={{ display: 'flex', justifyContent: 'center', paddingTop: 18, marginTop: 18, borderTop: '1px solid var(--border-hairline)' }}>
-            <BreathPreview size={110} label={i18n.t('psyBreathInLabel')} />
+            <BreathPreview size={150} />
           </div>
         )}
       </Panel>
@@ -1208,17 +1209,13 @@ function ProtectiveTab({ i18n, psych, mhStore, profile, trades, closed, savedAt,
           </div>
         </Panel>
 
-        {/* Calm room preview - the real component, opened in place */}
+        {/* Calm room card - the same card the Dashboard and Session boards show; opening it here
+            keeps this tab's own CalmRoom (with its "opened from the Protective tab" reason chip) */}
         <Panel variant="base" ornament padding="18px 20px 20px" style={{ flex: '1 1 300px' }}>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 16, alignItems: 'center' }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 12, width: '100%' }}>
-              <SectionLabel>{i18n.t('psyCalmRoomTitle')}</SectionLabel>
-              <Chip tone="accent" style={{ marginInlineStart: 'auto' }}>{i18n.t('psyCalmRoomPattern')}</Chip>
-            </div>
-            <BreathPreview size={170} label={i18n.t('psyBreathInLabel')} />
-            <Caption style={{ textAlign: 'center', lineHeight: '18px' }}>{i18n.t('psyCalmRoomHint')}</Caption>
-            <Button variant="primary" icon="honour" fullWidth onClick={() => setCalmOpen(true)}>{i18n.t('psyOpenCalmRoom')}</Button>
-          </div>
+          <CalmRoomPanel
+            i18n={i18n} titled notch="color-mix(in srgb, var(--char-atmosphere) 42%, var(--ink-950))"
+            onOpen={() => setCalmOpen(true)}
+          />
         </Panel>
       </div>
 

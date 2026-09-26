@@ -11,7 +11,7 @@ import { openCalculator } from './tradeCalculatorModal.jsx';
 import { currentNavryaCharacter } from './currentCharacter.js';
 import { ManualAccountModal } from './accountsView.jsx';
 import { RoutineTab } from './routineTab.jsx';
-import { CalmRoomPanel } from './moodTab.jsx';
+import { CalmRoomPanel } from './calmRoom.jsx';
 import { DashboardScenarioRow } from './liveSessionView.jsx';
 import { openLiveSession } from './liveSessionSignal.js';
 import { SandboxedDashboardPanel, useDashboardBridgeSnapshot } from './dashboardPanelSandbox.jsx';
@@ -107,7 +107,7 @@ const copy = {
     catWatchlistTitle: 'واچ‌لیست بازار', catWatchlistMeta: 'قیمت زنده', catWatchlistDesc: 'نمادهایی که دنبال می‌کنی — هنوز به منبع قیمت زنده وصل نیست.',
     catAccountsTitle: 'حساب‌ها', catAccountsMeta: 'ریسک زنده', catAccountsDesc: 'موجودی واقعی، وضعیت ریسک و اقدامات سریع برای حساب‌های فعال.',
     catRoutineTitle: 'روتین روزانه', catRoutineDesc: 'همان چک‌لیست روتین معاملاتی‌ات که در پرونده روان‌شناسی می‌سازی — درست روی داشبورد.',
-    catCalmRoomTitle: 'اتاق آرامش', catCalmRoomDesc: 'تمرین تنفس و آرام‌سازی قبل یا بعد از معامله، همیشه در دسترس.',
+    catCalmRoomTitle: 'اتاق آرامش', catCalmRoomDesc: 'تمرین تنفس و آرام‌سازی قبل یا بعد از معامله، همیشه در دسترس.', catCalmRoomMeta: 'کول‌داون {n} دقیقه',
     catScenariosTitle: 'سناریوها', catScenariosDesc: 'همهٔ سناریوهای سشن باز، در یک لیست ثابت که با تعویض چارت عوض نمی‌شود.', noScenariosYet: 'هنوز سناریویی در این سشن ثبت نشده.',
     noAccountsYet: 'هنوز حسابی ثبت نشده', noAccountsNote: 'یک حساب پراپ یا شخصی اضافه کن تا موجودی و ریسک واقعی‌ات اینجا دنبال شود.',
     createFirstAccount: 'افزودن حساب', viewAllAccounts: 'مشاهده همه حساب‌ها',
@@ -147,7 +147,7 @@ const copy = {
     catWatchlistTitle: 'قائمة المراقبة', catWatchlistMeta: 'سعر مباشر', catWatchlistDesc: 'الرموز التي تتابعها — غير متصلة بمصدر أسعار مباشر بعد.',
     catAccountsTitle: 'الحسابات', catAccountsMeta: 'مخاطر مباشرة', catAccountsDesc: 'الرصيد الحقيقي وحالة المخاطر وإجراءات سريعة للحسابات النشطة.',
     catRoutineTitle: 'الروتين اليومي', catRoutineDesc: 'نفس قائمة روتين التداول التي تبنيها في الملف النفسي — مباشرة على لوحة التحكم.',
-    catCalmRoomTitle: 'غرفة الهدوء', catCalmRoomDesc: 'تمرين تنفس واسترخاء قبل أو بعد الصفقة، متاح دائماً.',
+    catCalmRoomTitle: 'غرفة الهدوء', catCalmRoomDesc: 'تمرين تنفس واسترخاء قبل أو بعد الصفقة، متاح دائماً.', catCalmRoomMeta: 'تهدئة {n} دقيقة',
     catScenariosTitle: 'السيناريوهات', catScenariosDesc: 'كل سيناريوهات الجلسة المفتوحة، في قائمة ثابتة لا تتغيّر بتغيير الرسم البياني.', noScenariosYet: 'لم يُسجَّل أي سيناريو في هذه الجلسة بعد.',
     noAccountsYet: 'لم يتم تسجيل أي حساب بعد', noAccountsNote: 'أضف حساب تمويل أو حساب شخصي لمتابعة رصيدك ومخاطرك الحقيقية هنا.',
     createFirstAccount: 'إضافة حساب', viewAllAccounts: 'عرض كل الحسابات',
@@ -187,7 +187,7 @@ const copy = {
     catWatchlistTitle: 'Market watchlist', catWatchlistMeta: 'live price', catWatchlistDesc: 'Instruments you follow — not wired to a live price source yet.',
     catAccountsTitle: 'Accounts', catAccountsMeta: 'live risk', catAccountsDesc: 'Real balance, risk state and quick actions for your active accounts.',
     catRoutineTitle: 'Daily routine', catRoutineDesc: 'The same trading-routine checklist you build in the psychology dossier — right on the dashboard.',
-    catCalmRoomTitle: 'Calm room', catCalmRoomDesc: 'A breathing and cooldown exercise before or after a trade, always one click away.',
+    catCalmRoomTitle: 'Calm room', catCalmRoomDesc: 'A breathing and cooldown exercise before or after a trade, always one click away.', catCalmRoomMeta: '{n} min cool-down',
     catScenariosTitle: 'Scenarios', catScenariosDesc: 'Every scenario in the open session, in one steady list that never changes when you switch charts.', noScenariosYet: 'No scenario is logged in this session yet.',
     noAccountsYet: 'No accounts yet', noAccountsNote: 'Add a prop-firm or personal account to follow your real balance and risk right here.',
     createFirstAccount: 'Add account', viewAllAccounts: 'View all accounts',
@@ -227,7 +227,7 @@ const copy = {
     catWatchlistTitle: 'Lista de seguimiento', catWatchlistMeta: 'precio en vivo', catWatchlistDesc: 'Instrumentos que sigues — aún sin fuente de precios en vivo.',
     catAccountsTitle: 'Cuentas', catAccountsMeta: 'riesgo en vivo', catAccountsDesc: 'Saldo real, estado de riesgo y acciones rápidas para tus cuentas activas.',
     catRoutineTitle: 'Rutina diaria', catRoutineDesc: 'La misma lista de rutina de trading que construyes en el expediente psicológico — directo en el panel.',
-    catCalmRoomTitle: 'Sala de calma', catCalmRoomDesc: 'Un ejercicio de respiración y enfriamiento antes o después de una operación, siempre a un clic.',
+    catCalmRoomTitle: 'Sala de calma', catCalmRoomDesc: 'Un ejercicio de respiración y enfriamiento antes o después de una operación, siempre a un clic.', catCalmRoomMeta: 'Pausa de {n} min',
     catScenariosTitle: 'Escenarios', catScenariosDesc: 'Todos los escenarios de la sesión abierta, en una lista estable que no cambia al cambiar de gráfico.', noScenariosYet: 'Aún no hay ningún escenario registrado en esta sesión.',
     noAccountsYet: 'Aún no hay cuentas', noAccountsNote: 'Añade una cuenta de prop firm o personal para seguir aquí tu saldo y riesgo reales.',
     createFirstAccount: 'Añadir cuenta', viewAllAccounts: 'Ver todas las cuentas',
@@ -1058,6 +1058,11 @@ function panelMeta(id, t, lang) {
   const stratStore = window.TradeJournalStrategyEducationStore;
   if (id === 'positions' && tradeStore) return t('catPositionsMeta', { n: digits(lang, tradeStore.listSync().filter((tr) => tr.status === 'hunting' || tr.status === 'open').length) });
   if (id === 'strategies' && stratStore) return t('catStrategiesMeta', { n: digits(lang, stratStore.listActive().length) });
+  if (id === 'calmRoom') {
+    const psych = window.TradeJournalPsychologyStore;
+    const minutes = psych ? (psych.settings().postTradeReflection.cooldownMinutes || 15) : 15;
+    return t('catCalmRoomMeta', { n: digits(lang, Math.max(1, minutes)) });
+  }
   if (!/^(psych|weather|session|sessions|positions|chart|strategies|patterns|reward|video|banner|watchlist)$/.test(id)) return '';
   return t('cat' + id.charAt(0).toUpperCase() + id.slice(1) + 'Meta');
 }

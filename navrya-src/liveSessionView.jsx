@@ -20,7 +20,7 @@ import { SessionAiAnalysisModal } from './sessionAiAnalysisModal.jsx';
 import { SessionAnalysisCard, ImageLightbox } from './sessionAnalysisCard.jsx';
 import { AnalysisGraphView } from './analysisGraphView.jsx';
 import { AccountsPanel as DashAccountsPanel, WeatherPanel as DashWeatherPanel, dashboardT } from './dashboardView.jsx';
-import { CalmRoomPanel } from './moodTab.jsx';
+import { CalmRoomPanel } from './calmRoom.jsx';
 
 const TIMEFRAMES = ['1m', '3m', '5m', '15m', '30m', '1h', '2h', '4h', '1D', '1W'];
 const MARKET_NAMES = ['Sydney', 'Tokyo', 'London', 'NewYork'];
