@@ -1,7 +1,7 @@
 {
-  "generatedAt": "2026-09-26T03:04:22.390Z",
+  "generatedAt": "2026-09-26T14:17:11.069Z",
   "version": 1,
-  "contentHash": "fa056d1b8be7c876",
+  "contentHash": "992d785e085b257e",
   "domains": [
     {
       "id": "dashboard",
@@ -482,7 +482,7 @@
         "complete/continue intake",
         "run a weekly check-in",
         "log a mood / pre-session check-in",
-        "open the Calm Room (breathing and calming)",
+        "open the Calm Room: a breathing pacer with five breathing types (long exhale, box/tactical, cyclic sighing, 4-7-8, coherent), an optional breath sound and the trader's own on-device music",
         "build a daily routine in a popup builder - 12 routine types (market styles, discipline, analysis, hygiene, health, mind, sleep, learning or your own steps), each step with an optional time and optional reminders - and tick it off each day (also via chat: psychology.routine.create/edit)",
         "review the Therapist tab's suggested profile changes one field at a time",
         "log/delete a trigger",
