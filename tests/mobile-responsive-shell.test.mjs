@@ -85,7 +85,7 @@ test('the phone dock preserves its voice action while suppressing optional deskt
 // the waveform moves to its own full-width line and the controls become 44px tap targets.
 test('the voice console has dedicated phone geometry rather than desktop controls that overflow', () => {
   assert.match(chatDock, /className="navrya-dock-mascot"/);
-  assert.match(voiceConsole, /className="navrya-voice-console"/);
+  assert.match(voiceConsole, /className: 'navrya-voice-console'/, 'every variant of the console (bar, sidecar, anchor, bottom) wears the class the phone rules hang on');
   assert.match(voiceConsole, /className="navrya-voice-console-error-card"/);
   assert.match(voiceConsole, /className="navrya-voice-console-controls"/);
   assert.match(voiceConsole, /className="navrya-voice-console-main-action"/);

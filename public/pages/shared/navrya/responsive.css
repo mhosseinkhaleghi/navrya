@@ -161,10 +161,27 @@ body .app-shell {
 }
 [data-navrya-dock-host] { padding-bottom: calc(24px + var(--navrya-chat-dock-reserved, 0px)) !important; }
 [data-navrya-dock-host] [role="dialog"][aria-modal="true"] { max-height: calc(100vh - 48px - var(--navrya-chat-dock-reserved, 0px)) !important; }
+/* The dock's reserve changes only when the user starts a voice sidecar or opens the conversation
+   beside a dialog - a glide (the design's 220ms ease-out), never a jump. A dialog that is only being
+   opened is not animated: the dock marks its backdrop before the first paint. */
+[data-navrya-dock-host] { transition: padding 220ms var(--ease-out, cubic-bezier(.22,.61,.36,1)); }
+@media (prefers-reduced-motion: reduce) { [data-navrya-dock-host] { transition: none; } }
 
-/* The compact voice row in the side lane (a ~376px column): the waveform on its own line, the
-   portrait, timer and controls on the line below it. */
-[data-navrya-dock-layout="side"] .navrya-voice-console-controls { flex-wrap: wrap !important; row-gap: 6px !important; }
-[data-navrya-dock-layout="side"] .navrya-voice-console-meter { flex: 1 1 100% !important; order: -1; height: 30px !important; }
-[data-navrya-dock-layout="side"] .navrya-voice-console-timer { margin-inline-end: auto; }
-[data-navrya-dock-layout="side"] .navrya-voice-console-main-label { display: none; }
+/* A voice session welded to a dialog (ChatDock.jsx): the dialog loses its bottom edge so it and the
+   voice bar read as one piece - the bar draws the joint and the rounded bottom corners. */
+[data-navrya-dock-weld="true"] {
+  border-bottom-left-radius: 0 !important;
+  border-bottom-right-radius: 0 !important;
+  border-bottom-width: 0 !important;
+}
+
+/* A labelled row button (skip / later) keeps its width on a phone; only the icon buttons go 44px. */
+@media (max-width: 720px) {
+  .navrya-voice-console-controls .navrya-voice-console-skip,
+  .navrya-voice-console-controls .navrya-voice-console-later { width: auto !important; padding-inline: 12px !important; }
+  /* "Narrow page: always the bar" (plate XIV): the phone dock is pinned to the bottom edge, so a welded or
+     anchored capsule (positioned from the top) gives up its top - never a tall transparent box over the page. */
+  [data-navrya-assistant="dock"][data-navrya-dock-layout="weld"],
+  [data-navrya-assistant="dock"][data-navrya-dock-layout="anchor"],
+  [data-navrya-assistant="dock"][data-navrya-dock-layout="side"] { top: auto !important; width: auto !important; }
+}

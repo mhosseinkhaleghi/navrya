@@ -3,31 +3,35 @@ import { Icon } from '../core/Icon.jsx';
 import { useAssistantMotion } from './motion.js';
 import { ModelGlyph } from './ModelSwitcher.jsx';
 import { CompanionSigil, EngineChip } from './CompanionSigil.jsx';
+import { DockMenu } from './DockMenu.jsx';
+import { CapsuleTop } from './CapsuleTop.jsx';
 import { DockLayoutContext } from './dockLayout.js';
+import {
+  accent, cardBackground, cardShadow, cardRadius, EDGE, TEXT, TEXT_SOFT, TEXT_RECEIPT, MUTED, DIM, TIME, GOLD, GREEN, DIVIDER,
+  HAIRLINE_STRONG, pillStyle, choiceStyle
+} from './dockDesign.js';
 
-/* Redesigned to match code-codex/چت داک جدید/NavryaChatDock.dc.html - a persistent, resizable
-   reply panel (header with a real avatar/label/height-stage rail, a message-grid stream, a
-   rule-engine banner, a small stat grid) replacing the previous plain "answer card" look. Every
-   existing prop/behavior this component's callers (chatDockView.jsx) already depend on is
-   unchanged - 'thinking'/'safety'/'review'/'answer' states, `messages` vs `lines`, suggestions,
-   review fields/actions, onClose - this is a visual + structural redesign of the SAME contract,
-   not a new component. See this file's own inline comments for the handful of deliberate, honest
-   adaptations from the mock (no fabricated "SEEN" read-receipt, no "save to journal" - no real
-   journal concept exists to wire it to; Copy/Regenerate ARE wired for real).
+/* The conversation surface above the ChatDock composer (ChatDock capsule design, plate III shapes 2'
+   and 3), in two shapes of the same card:
 
-   Companion capsule redesign (artbook plates III-V): the same contract again, restyled -
-   - the header is the companion (the character's portrait and name) with the engine as a small
-     label, instead of "<ENGINE> · CHAT", a stage code (TALL/FOLDED) and a stage rail;
-   - assistant turns carry the character's portrait, user turns a character-tinted bubble;
-   - applied workflow fields show as receipt chips, not an uppercase stat grid of raw paths;
-   - copy / regenerate / feedback are one quiet icon row; the two "it was wrong" choices sit in a
-     small menu behind one button instead of five equal-weight pills;
-   - `joined` squares the bottom corners so the panel sits flush on the ChatDock row. */
+   - PEEK: a fresh reply in two lines with its receipt and quick choices, folded away by the dock
+     after a few seconds of inattention (dockShape.js). Also what a reply looks like under an open
+     dialog, where only a short band is free.
+   - SCROLL ("the scroll"): the whole conversation, only when the user opens it: the companion's
+     header (portrait, name, the engine as a chip that opens the engine menu, a status line, and
+     history / pin to the side / collapse / close), then the messages - each assistant turn with its
+     receipt (and an undo when the action can be undone) and, on the last one, the feedback row.
 
-// One ceiling for the thread, content-sized below it (a short reply stays short). This replaces
-// the COMPACT/TALL/FULL stage tiers - still viewport-relative, still inside the 60vh body wrapper
-// below, so the original overflow fix holds; fold (the header chevron) still collapses to the header.
-const THREAD_MAX_HEIGHT = 'min(44vh, 520px)';
+   Every existing prop/behavior this component's callers (chatDockView.jsx) depend on is unchanged -
+   'thinking'/'safety'/'review'/'answer' states, `messages` vs `lines`, suggestions, review fields/
+   actions, onClose - this is a visual + structural redesign of the SAME contract, not a new
+   component. `joined` squares the bottom corners so the card sits flush on the ChatDock row. See the
+   inline comments for the handful of deliberate, honest adaptations from the design (no fabricated
+   "seen" receipts; Copy/Regenerate/Undo are wired for real, or not shown). */
+
+// One ceiling for the thread, content-sized below it (a short reply stays short). The whole card
+// (header + thread + composer) stays under 60% of the viewport height, the design's rule.
+const THREAD_MAX_HEIGHT = 'calc(60vh - 150px)';
 
 function Dots() {
   return (
@@ -78,13 +82,13 @@ function stripMarkdownTokens(text) {
 
 function actionButtonStyle(kind) {
   return kind === 'apply'
-    ? { border: '1px solid transparent', background: 'var(--char-accent)', color: 'var(--ink-950)', fontWeight: 600 }
+    ? { border: '1px solid transparent', background: 'var(--char-accent)', color: 'var(--char-on-accent)', fontWeight: 600 }
     : { border: '1px solid var(--border-gold)', background: 'transparent', color: 'var(--text-muted)', fontWeight: 500 };
 }
 
-// `iconOnly` (companion capsule redesign): the compact 30px icon form the reply's own action row
-// uses (copy / regenerate / feedback) - `label` becomes its accessible name and tooltip, and
-// `active` marks an open menu trigger. Every existing caller keeps the labelled pill form.
+// `iconOnly`: the compact 30px icon form the reply's own action row uses (copy / regenerate /
+// feedback) - `label` becomes its accessible name and tooltip, and `active` marks an open menu
+// trigger. Every existing caller keeps the labelled pill form.
 function MiniButton({ kind, icon, children, onClick, iconOnly = false, label, active = false, ...rest }) {
   if (iconOnly) {
     return (
@@ -92,10 +96,10 @@ function MiniButton({ kind, icon, children, onClick, iconOnly = false, label, ac
         type="button" onClick={onClick} aria-label={label} title={label} {...rest}
         style={{
           width: 30, height: 30, flex: 'none', display: 'grid', placeItems: 'center', padding: 0,
-          borderRadius: 'var(--radius-8)', cursor: 'pointer',
-          border: '1px solid ' + (active ? 'color-mix(in srgb,var(--char-accent) 50%,transparent)' : 'transparent'),
+          borderRadius: 10, cursor: 'pointer',
+          border: '1px solid ' + (active ? accent(50) : 'transparent'),
           background: active ? 'var(--char-active-surface)' : 'transparent',
-          color: active ? 'var(--char-accent)' : 'var(--text-muted)',
+          color: active ? 'var(--char-accent)' : MUTED,
           transition: 'color 160ms var(--ease-out),background 160ms var(--ease-out)'
         }}
       >
@@ -137,22 +141,33 @@ function CopyButton({ text, label, copiedLabel, iconOnly = false }) {
   return <MiniButton kind="discard" icon={copied ? 'check' : 'copy'} onClick={onCopy}>{copied ? copiedLabel : label}</MiniButton>;
 }
 
-/* Companion capsule redesign: what the turn actually applied, as one small receipt line each
-   ("✓ Dashboard", "✓ Platform / broker MetaTrader 5") instead of the old uppercase stat grid that
-   printed raw workflow paths like DOMAINID. The human wording comes from chatDockView.jsx
-   (chatDockReceipts.js) - this only renders it. */
-function ReceiptChip({ label, value }) {
+/* What the turn actually applied, as one small receipt line each ("✓ I went to Dashboard", "✓
+   Platform / broker MetaTrader 5") instead of an uppercase stat grid of raw paths. The human wording
+   comes from chatDockView.jsx (chatDockReceipts.js) - this only renders it. `undo` ({ label, run })
+   adds the design's "Undo" beside the receipt, only when the action really can be undone. */
+function ReceiptChip({ label, value, undo }) {
   return (
     <span style={{
-      display: 'inline-flex', alignItems: 'center', gap: 8, minHeight: 32, paddingInlineStart: 5, paddingInlineEnd: 12, paddingBlock: 3, boxSizing: 'border-box',
+      display: 'inline-flex', alignItems: 'center', gap: 8, minHeight: 34, paddingInlineStart: 4, paddingInlineEnd: 12, paddingBlock: 3, boxSizing: 'border-box',
       borderRadius: 999, border: '1px solid rgba(183,138,74,.36)', background: 'rgba(183,138,74,.07)',
-      font: 'var(--type-caption)', fontSize: 12.5, color: 'var(--text-primary)', maxWidth: '100%'
+      font: 'var(--type-caption)', fontSize: 12.5, color: TEXT_RECEIPT, maxWidth: '100%'
     }}>
-      <span aria-hidden="true" style={{ width: 20, height: 20, flex: 'none', borderRadius: 999, display: 'grid', placeItems: 'center', background: 'rgba(46,204,113,.14)', color: 'var(--success)' }}>
-        <Icon name="check" size={12} strokeWidth={2.6} />
+      <span aria-hidden="true" style={{ width: 20, height: 20, flex: 'none', borderRadius: 999, display: 'grid', placeItems: 'center', background: 'rgba(46,204,113,.14)', color: GREEN }}>
+        <Icon name="check" size={12} strokeWidth={2.4} />
       </span>
-      {label && <span style={{ color: 'var(--text-muted)', whiteSpace: 'nowrap' }}>{label}</span>}
+      {label && <span style={{ color: MUTED, whiteSpace: 'nowrap' }}>{label}</span>}
       <span dir="auto" style={{ minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{value}</span>
+      {undo && (
+        <React.Fragment>
+          <span aria-hidden="true" style={{ width: 1, height: 14, flex: 'none', background: HAIRLINE_STRONG }} />
+          <button
+            type="button" onClick={undo.run}
+            style={{ height: 28, padding: '0 10px', borderRadius: 999, border: 0, background: 'transparent', color: GOLD, fontSize: 12, cursor: 'pointer', display: 'inline-flex', gap: 5, alignItems: 'center', flex: 'none' }}
+          >
+            <Icon name="undo-2" size={13} />{undo.label}
+          </button>
+        </React.Fragment>
+      )}
     </span>
   );
 }
@@ -167,8 +182,7 @@ function metaToStat(entry) {
 
 /* The rule-engine banner is only ever shown when chat-dock-core.js's sendChat() actually resolved
    a real Journey C proactive rule this turn (`result.kind === 'proactive-resolved'`, carrying a
-   real `finding.ruleId` - see ai-proactive-engine.js's resolveConfirmation()) - never fabricated,
-   unlike the mock's own static example. */
+   real `finding.ruleId` - see ai-proactive-engine.js's resolveConfirmation()) - never fabricated. */
 function RuleBanner({ text }) {
   return (
     <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '9px 13px', borderRadius: 9, border: '1px dashed var(--divider-gold)', background: 'rgba(214,175,107,.05)' }}>
@@ -200,25 +214,27 @@ function dividerLabel(at, locale, todayLabel, yesterdayLabel) {
   if (isYesterday(at)) return yesterdayLabel;
   try { return new Date(at).toLocaleDateString(locale || undefined); } catch (_e) { return null; }
 }
-function latencyText(ms) {
+function latencyText(ms, locale) {
   if (ms == null) return '';
-  return (ms / 1000).toFixed(1);
+  try { return (ms / 1000).toLocaleString(locale || undefined, { minimumFractionDigits: 1, maximumFractionDigits: 1 }); } catch (_e) { return (ms / 1000).toFixed(1); }
 }
 
-function HeaderIconButton({ icon, label, onClick, children, dangerHover, size = 36 }) {
+function HeaderIconButton({ icon, label, onClick, children, dangerHover, size = 36, active = false }) {
   const [hover, setHover] = React.useState(false);
   return (
     <button
       type="button" onClick={onClick} aria-label={label} title={label}
+      aria-pressed={active ? 'true' : undefined}
       onMouseEnter={() => setHover(true)} onMouseLeave={() => setHover(false)}
       style={{
-        position: 'relative', width: size, height: size, flex: 'none', borderRadius: 12, display: 'grid', placeItems: 'center',
-        cursor: 'pointer', border: '1px solid ' + (hover ? (dangerHover ? 'color-mix(in srgb,var(--danger) 60%,transparent)' : 'var(--border-hairline)') : 'transparent'),
-        background: hover ? 'rgba(244,234,215,.04)' : 'transparent', color: dangerHover && hover ? 'var(--danger)' : 'var(--text-muted)',
+        position: 'relative', width: size, height: size, flex: 'none', borderRadius: size <= 34 ? 11 : 12, display: 'grid', placeItems: 'center',
+        cursor: 'pointer', border: '1px solid ' + (active ? accent(50) : hover ? (dangerHover ? 'color-mix(in srgb,var(--danger) 60%,transparent)' : 'var(--border-hairline)') : 'transparent'),
+        background: active ? 'var(--char-active-surface)' : hover ? 'rgba(244,234,215,.04)' : 'transparent',
+        color: active ? 'var(--char-accent)' : dangerHover && hover ? 'var(--danger)' : MUTED,
         transition: 'border-color 160ms var(--ease-out),color 160ms var(--ease-out),background 160ms var(--ease-out)'
       }}
     >
-      {children || (icon && <Icon name={icon} size={16} />)}
+      {children || (icon && <Icon name={icon} size={size <= 34 ? 15 : 16} />)}
     </button>
   );
 }
@@ -238,7 +254,7 @@ function WrongFeedbackMenu({ open, onToggle, onClose, label, items }) {
   }, [open, onClose]);
   return (
     <span ref={ref} style={{ position: 'relative', display: 'inline-flex' }}>
-      <MiniButton iconOnly icon="thumbs-down" label={label} active={open} aria-haspopup="menu" aria-expanded={open ? 'true' : 'false'} onClick={onToggle} />
+      <MiniButton iconOnly icon="x" label={label} active={open} aria-haspopup="menu" aria-expanded={open ? 'true' : 'false'} onClick={onToggle} />
       {open && (
         <span role="menu" style={{
           position: 'absolute', bottom: 'calc(100% + 6px)', insetInlineStart: 0, zIndex: 2, minWidth: 190,
@@ -253,10 +269,9 @@ function WrongFeedbackMenu({ open, onToggle, onClose, label, items }) {
 }
 
 /* Soft reply surface that rises above the ChatDock. Lines reveal in sequence so the answer
-   reads as it lands rather than appearing as a wall. Beyond the original design's plain
-   answer/thinking states, `state` also covers 'safety' (mental-health's flagged-message gate)
-   and 'review' (screenshot -> trade-field extraction) so every reply the old global-ai-dock
-   produced still has a home here. */
+   reads as it lands rather than appearing as a wall. Beyond the plain answer/thinking states,
+   `state` also covers 'safety' (mental-health's flagged-message gate) and 'review' (screenshot ->
+   trade-field extraction) so every reply the old global-ai-dock produced still has a home here. */
 export function ChatResponsePopover({
   open = false,
   state = 'answer',
@@ -277,46 +292,36 @@ export function ChatResponsePopover({
   reviewEmptyLabel,
   reviewActions,
   onClose,
-  // Redesign additions - all optional so any other caller of this component keeps working
-  // unchanged with none of them supplied.
+  // Optional extras - all optional so any other caller of this component keeps working unchanged
+  // with none of them supplied.
   model, locale, todayLabel = 'Today', yesterdayLabel = 'Yesterday',
   sizeLabels = {}, messageActionLabels = {}, ruleApplied = false, ruleAppliedLabel, onRegenerate,
-  // Voice Command Learning Profile addendum, section 8: a small, non-blocking, dismissible row -
-  // `feedback` is null/undefined (renders nothing, byte-for-byte the prior behavior) or a plain
-  // truthy marker (chatDockView.jsx computes it from ai-action-receipts.js's own
-  // lastEligibleReceipt(), scoped to the current conversation/tab/receipt - see that file's own
-  // comment) meaning "the turn that just landed has a real, trustworthy, not-yet-answered receipt
-  // to give feedback on." Every one of the five handlers is optional; a caller that never passes
-  // any of them (every existing one, before this addendum) sees this whole row never render.
+  // Voice Command Learning Profile addendum, section 8: a small, non-blocking row - `feedback` is
+  // null/undefined (renders nothing) or a plain truthy marker (chatDockView.jsx computes it from
+  // ai-action-receipts.js's own lastEligibleReceipt(), scoped to the current conversation/tab/
+  // receipt) meaning "the turn that just landed has a real, trustworthy, not-yet-answered receipt to
+  // give feedback on." Every handler is optional; a caller that never passes any of them sees this
+  // whole row never render.
   feedback = null, feedbackLabels = {},
   onFeedbackCorrect, onFeedbackWrongAction, onFeedbackWrongTarget, onFeedbackRemember, onFeedbackDismiss,
-  // Companion capsule redesign: `companion` ({ name, portrait }) is the header/avatar identity,
-  // `statusLabel` the header's one-line status when not thinking, `joined` the flush-on-the-row
-  // shape. All optional - without them the header falls back to `title` and a plain sparkle.
+  // `companion` ({ name, portrait }) is the header/avatar identity, `statusLabel` the header's one-line
+  // status when not thinking, `joined` the flush-on-the-row shape. `shape` is 'peek' or 'scroll'
+  // (dockShape.js); the peek's expand / the scroll's fold / pin come from the dock.
   companion, statusLabel, joined = false,
-  // Capsule exact pass: the design's header history button (optional - omitted, it renders nothing).
+  shape = 'scroll', onExpand, onFold, pinned = false, onPinToggle, pinLabel, unpinLabel, pinIcon = 'panel-right',
   onHistory, historyLabel,
-  width = 680,
+  // The header's engine chip opens the engine menu ({ items, glyph, label }); the peek's "just now"
+  // source line; quick choices for a question with options; the undo of the last action, if any.
+  engineMenu = null, justNowLabel, choices = [], onChoice, undo = null, peekLabels = {},
+  width = 600,
   style, ...rest
 }) {
   useAssistantMotion();
   // Where the capsule sits (ChatDock) - 'under' means a dialog is open and there is only a short
-  // band below it, so the reply renders as the design's peek (see below).
+  // band below it, so the reply is always the peek there.
   const dockLayout = React.useContext(DockLayoutContext);
   const [mounted, setMounted] = React.useState(open);
   const [leaving, setLeaving] = React.useState(false);
-  // Found via real user report + screenshot: a genuinely long, richly-structured reply (the
-  // exact kind the higher-verbosity system prompt now produces on purpose) could still make this
-  // whole popover dominate a shorter viewport even after the earlier whitespace-rendering fix -
-  // the text itself rendered correctly, but the BOX around it had no viewport-relative ceiling of
-  // its own. `folded` (formerly `collapsed`) lets the user manually shrink it back to just the
-  // header (still reachable to re-expand) without losing/closing the conversation - a real,
-  // requested control, matching the design's own fold/chevron affordance. Deliberately local
-  // state, not lifted to chatDockView.jsx: React reuses this same component instance across every
-  // new message in one open conversation (no `key` prop forces a remount), so a manual fold
-  // correctly persists turn to turn until the user explicitly unfolds it again, and just as
-  // correctly resets for a genuinely new popover.
-  const [folded, setFolded] = React.useState(false);
   const [wrongMenuOpen, setWrongMenuOpen] = React.useState(false);
   const threadRef = React.useRef(null);
 
@@ -343,10 +348,8 @@ export function ChatResponsePopover({
   const safety = state === 'safety';
   const review = state === 'review';
 
-  function toggleFold() { setFolded((f) => !f); }
   const portrait = companion && companion.portrait;
   const companionName = (companion && companion.name) || title;
-  const radius = 20;
 
   // `lines` only ever carries at most one entry in practice (the screenshot-analysis error
   // fallback) - folded into the same real message-grid renderer as `messages` instead of a
@@ -358,124 +361,110 @@ export function ChatResponsePopover({
   const lastMessage = effectiveMessages && effectiveMessages.length ? effectiveMessages[effectiveMessages.length - 1] : null;
   // The feedback choices only ever render for the LAST assistant message, only when `feedback` is
   // truthy, and never mid-thinking/safety/review.
-  const showFeedback = !thinking && !safety && !review && effectiveMessages && lastMessage && lastMessage.role === 'assistant' && feedback;
-
-  // The design's "peek" (artbook plate III, 2'): with a dialog open and only the short band below
-  // it (ChatDock's 'under' layout), the reply is one compact card - the portrait, the latest
-  // assistant text and the receipts - sitting in that band, so the dialog is never covered and
-  // nothing is hidden under its scrim. The mental-health safety card and the screenshot review
-  // always keep the full panel: those must never be squeezed into a peek.
+  const settled = !thinking && !safety && !review;
+  const showFeedback = settled && effectiveMessages && lastMessage && lastMessage.role === 'assistant' && feedback;
   const lastAssistant = effectiveMessages ? [...effectiveMessages].reverse().find((m) => m.role === 'assistant') : null;
-  if (dockLayout === 'under' && !safety && !review) {
+  const receipts = settled ? meta.map(metaToStat) : [];
+
+  const cardFrame = {
+    width: '100%', maxWidth: width, boxSizing: 'border-box', overflow: 'hidden', position: 'relative',
+    // An opaque body (page content never shows through a reply), the character's tint only at the very
+    // top, and - when `joined` - no bottom corners or bottom edge of its own, so it continues straight
+    // into the ChatDock row below it.
+    borderRadius: cardRadius(false, joined), border: '1px solid ' + EDGE, borderBottom: joined ? 0 : undefined,
+    background: cardBackground('card'),
+    boxShadow: cardShadow('card'),
+    animation: `${leaving ? 'navrya-dock-sink 180ms var(--ease-out)' : 'navrya-dock-rise var(--dur-expand) var(--ease-out)'} both`,
+    transformOrigin: 'bottom center',
+    ...style
+  };
+
+  // ---- PEEK ---------------------------------------------------------------------------------
+  // The mental-health safety card and the screenshot review always keep the full card: those must
+  // never be squeezed into a peek.
+  if ((shape === 'peek' || dockLayout === 'under') && !safety && !review) {
+    const lastReceipt = receipts.length ? receipts[receipts.length - 1] : null;
     return (
-      <div
-        data-navrya-assistant="response" data-navrya-response-variant="peek" role="status" aria-live="polite"
-        style={{
-          width: '100%', maxWidth: width, boxSizing: 'border-box', overflow: 'hidden', position: 'relative',
-          borderRadius: joined ? `${radius}px ${radius}px 0 0` : radius,
-          border: '1px solid var(--border-gold-strong)', borderBottom: joined ? 0 : undefined,
-          background: 'linear-gradient(180deg,color-mix(in srgb,var(--char-accent) 11%,#0B0E14) 0%,#0B0E14 60%,#0A0D12 100%)',
-          boxShadow: '0 -12px 48px rgba(0,0,0,.45),0 0 40px var(--char-glow),inset 0 1px 0 rgba(244,234,215,.12)',
-          animation: `${leaving ? 'navrya-pop-out 170ms var(--ease-standard)' : 'navrya-pop-in 240ms var(--ease-out)'} both`,
-          ...style
-        }}
-        {...rest}
-      >
-        <div style={{ display: 'flex', alignItems: 'flex-start', gap: 10, padding: '12px 10px 10px 12px' }}>
-          <CompanionSigil portrait={portrait} size={28} state={thinking ? 'thinking' : 'idle'} dot={false} />
-          <div style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', gap: 4 }}>
-            <span style={{ font: 'var(--type-caption)', fontSize: 11.5, color: 'var(--text-muted)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-              {companionName}{thinking && thinkingLabel ? ' · ' + thinkingLabel + '…' : ''}
-            </span>
+      <div data-navrya-assistant="response" data-navrya-response-variant="peek" role="status" aria-live="polite" style={cardFrame} {...rest}>
+        <CapsuleTop />
+        <div style={{ display: 'flex', alignItems: 'flex-start', gap: 6, padding: '18px 14px 12px 12px' }}>
+          <div style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', gap: 8 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 11.5, color: DIM, minWidth: 0 }}>
+              <span aria-hidden="true" style={{ width: 6, height: 6, borderRadius: '50%', background: 'var(--char-accent)', flex: 'none' }} />
+              <span style={{ whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                {justNowLabel || companionName}{thinking && thinkingLabel ? ' · ' + thinkingLabel + '…' : ''}
+              </span>
+              {lastReceipt && (
+                <span style={{ ...pillStyle('success'), gap: 4, height: 20, minWidth: 0, overflow: 'hidden' }}>
+                  <Icon name="check" size={11} strokeWidth={2.4} />
+                  <span dir="auto" style={{ overflow: 'hidden', textOverflow: 'ellipsis' }}>{lastReceipt.value}</span>
+                </span>
+              )}
+            </div>
             {!thinking && lastAssistant && (
               <p dir="auto" style={{
-                margin: 0, font: 'var(--type-body)', fontSize: 13.5, lineHeight: '23px', color: 'var(--parchment)', whiteSpace: 'pre-line',
+                margin: 0, font: 'var(--type-body)', fontSize: 14, lineHeight: 1.85, color: TEXT_SOFT, whiteSpace: 'pre-line',
                 display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden'
               }}>{stripMarkdownTokens(lastAssistant.content)}</p>
             )}
             {thinking && <Dots />}
-            {!thinking && meta.length > 0 && (
-              <div style={{ display: 'flex', flexWrap: 'nowrap', gap: 6, overflow: 'hidden' }}>
-                {meta.slice(0, 2).map((m, i) => { const cell = metaToStat(m); return <ReceiptChip key={i} label={cell.label} value={cell.value} />; })}
+            {!thinking && choices.length > 0 && (
+              <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                {choices.map((c) => (
+                  <button key={c.value != null ? String(c.value) : c.label} type="button" onClick={() => onChoice && onChoice(c)} style={choiceStyle(32)}>{c.label}</button>
+                ))}
               </div>
             )}
           </div>
-          {onClose && <HeaderIconButton icon="x" label={sizeLabels.close} onClick={onClose} dangerHover size={32} />}
+          {dockLayout !== 'under' && onExpand && <HeaderIconButton icon="chevron-up" label={peekLabels.expand || sizeLabels.unfold} onClick={onExpand} size={34} />}
+          {onClose && <HeaderIconButton icon="x" label={peekLabels.close || sizeLabels.close} onClick={onClose} size={34} />}
         </div>
       </div>
     );
   }
 
+  // ---- SCROLL -------------------------------------------------------------------------------
+  const lastAssistantIndex = effectiveMessages ? effectiveMessages.reduce((found, m, i) => (m.role === 'assistant' ? i : found), -1) : -1;
   return (
-    <div
-      data-navrya-assistant="response" role="status" aria-live="polite"
-      style={{
-        width: '100%', maxWidth: width, boxSizing: 'border-box', overflow: 'hidden', position: 'relative',
-        // Companion capsule redesign: an opaque body (page content never shows through a reply),
-        // the character's tint only at the very top, and - when `joined` - no bottom corners or
-        // bottom edge of its own, so it continues straight into the ChatDock row below it.
-        borderRadius: joined ? `${radius}px ${radius}px 0 0` : radius,
-        border: '1px solid var(--border-gold-strong)', borderBottom: joined ? 0 : undefined,
-        background: 'linear-gradient(180deg,color-mix(in srgb,var(--char-accent) 11%,#0B0E14) 0%,#0B0E14 38%,#0A0D12 100%)',
-        boxShadow: joined ? '0 -12px 48px rgba(0,0,0,.45),0 0 40px var(--char-glow),inset 0 1px 0 rgba(244,234,215,.12)' : '0 26px 64px rgba(0,0,0,.6),0 0 40px var(--char-glow),inset 0 1px 0 rgba(244,234,215,.12)',
-        animation: `${leaving ? 'navrya-pop-out 170ms var(--ease-standard)' : 'navrya-pop-in 260ms var(--ease-out)'} both`,
-        transformOrigin: 'bottom center',
-        ...style
-      }}
-      {...rest}
-    >
-      <span aria-hidden="true" style={{ position: 'absolute', top: 9, insetInlineEnd: 9, width: 9, height: 9, pointerEvents: 'none', borderTop: '1px solid rgba(214,175,107,.55)', borderInlineEnd: '1px solid rgba(214,175,107,.55)' }} />
-      <span aria-hidden="true" style={{ position: 'absolute', top: 9, insetInlineStart: 9, width: 9, height: 9, pointerEvents: 'none', borderTop: '1px solid rgba(214,175,107,.55)', borderInlineStart: '1px solid rgba(214,175,107,.55)' }} />
+    <div data-navrya-assistant="response" data-navrya-response-variant="scroll" role="status" aria-live="polite" style={cardFrame} {...rest}>
+      <CapsuleTop />
 
-      <header style={{
-        position: 'relative', display: 'flex', alignItems: 'center', gap: 10,
-        padding: '16px 12px 12px 12px', borderBottom: '1px solid var(--border-hairline)'
-      }}>
+      <header style={{ position: 'relative', display: 'flex', alignItems: 'center', gap: 10, padding: '18px 12px 12px 12px' }}>
         <CompanionSigil portrait={portrait} size={36} state={thinking ? 'thinking' : 'idle'} />
         <div style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', gap: 3 }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 8, minWidth: 0 }}>
-            <span style={{ font: 'var(--type-body)', fontSize: 15, fontWeight: 700, color: 'var(--text-primary)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', minWidth: 0 }}>{companionName}</span>
-            {model && <EngineChip model={model} glyph={<ModelGlyph model={model} size={13} />} />}
+            <span style={{ font: 'var(--type-body)', fontSize: 15, fontWeight: 700, color: TEXT, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', minWidth: 0 }}>{companionName}</span>
+            {model && (engineMenu && engineMenu.items && engineMenu.items.length
+              ? <DockMenu variant="chip" placement="down" label={engineMenu.switchLabel || model.label} chipLabel={model.label} glyph={<ModelGlyph model={model} size={13} />} items={engineMenu.items} />
+              : <EngineChip model={model} glyph={<ModelGlyph model={model} size={13} />} />)}
           </div>
           {(thinking ? thinkingLabel : statusLabel) && (
-            <span style={{ display: 'flex', alignItems: 'center', gap: 6, font: 'var(--type-caption)', fontSize: 12, color: 'var(--text-muted)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-              <span aria-hidden="true" style={{ width: 6, height: 6, flex: 'none', borderRadius: 999, background: thinking ? 'var(--gold-warm)' : 'var(--success)' }} />
+            <span style={{ display: 'flex', alignItems: 'center', gap: 6, font: 'var(--type-caption)', fontSize: 12, color: MUTED, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+              <span aria-hidden="true" style={{ width: 6, height: 6, flex: 'none', borderRadius: 999, background: thinking ? 'var(--gold-warm)' : GREEN }} />
               {thinking ? thinkingLabel + '…' : statusLabel}
             </span>
           )}
         </div>
 
-        {/* In the narrow side lane the name needs the room; history is always in the composer's "+" menu. */}
-        {onHistory && dockLayout !== 'side' && <HeaderIconButton icon="history" label={historyLabel} onClick={onHistory} />}
-        <HeaderIconButton onClick={toggleFold} label={folded ? sizeLabels.unfold : sizeLabels.fold}>
-          <span aria-hidden="true" style={{ display: 'grid', placeItems: 'center', transition: 'transform 420ms cubic-bezier(.16,1,.3,1)', transform: 'rotate(' + (folded ? '180deg' : '0deg') + ')' }}>
-            <Icon name="chevron-down" size={16} />
-          </span>
-        </HeaderIconButton>
-
-        {onClose && <HeaderIconButton icon="x" label={sizeLabels.close} onClick={onClose} dangerHover />}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+          {onHistory && <HeaderIconButton icon="history" label={historyLabel} onClick={onHistory} />}
+          {onPinToggle && dockLayout !== 'under' && <HeaderIconButton icon={pinIcon} label={pinned ? unpinLabel : pinLabel} onClick={onPinToggle} active={pinned} />}
+          {onFold && <HeaderIconButton icon="chevron-down" label={sizeLabels.fold} onClick={onFold} />}
+          {onClose && <HeaderIconButton icon="x" label={sizeLabels.close} onClick={onClose} dangerHover />}
+        </div>
       </header>
+      <div aria-hidden="true" style={{ height: 1, background: DIVIDER, margin: '0 14px' }} />
 
-      {/* fix/voice-mode-turn-ux (Part E req 10): the whole body - not merely the messages thread
-          below - is its own viewport-constrained, scrollable region. Before this, a reply with
-          many suggestions/meta chips/review fields but few or no `messages` had no bound of its own
-          at all and could push the popover (and the header/close controls above it, which stay
-          OUTSIDE this wrapper and therefore always stay reachable) off-screen on a short viewport. */}
-      {!folded && <div className="navrya-scroll" style={{ padding: '14px', display: 'flex', flexDirection: 'column', gap: 12, maxHeight: '60vh', overflowY: 'auto', boxSizing: 'border-box' }}>
+      {/* The whole body - not merely the messages thread below - is its own viewport-constrained,
+          scrollable region, so a reply with many suggestions/receipts/review fields but few or no
+          `messages` can never push the header (which stays OUTSIDE this wrapper and therefore always
+          stays reachable) off-screen on a short viewport. */}
+      <div className="navrya-scroll" style={{ padding: '14px 16px 16px', display: 'flex', flexDirection: 'column', gap: 16, maxHeight: THREAD_MAX_HEIGHT, overflowY: 'auto', boxSizing: 'border-box', position: 'relative' }}>
         {prompt && (thinking || !effectiveMessages) && (
           <div style={{
             font: 'var(--type-caption)', color: 'var(--text-muted)', paddingInlineStart: 10,
             borderInlineStart: '2px solid var(--divider-gold)', textWrap: 'pretty'
           }}>{prompt}</div>
-        )}
-
-        {thinking && (
-          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-            <CompanionSigil portrait={portrait} size={28} state="thinking" dot={false} />
-            <div style={{ display: 'flex', alignItems: 'center', gap: 10, font: 'var(--type-body)', fontSize: 14, color: 'var(--text-muted)' }}>
-              <Dots /><span>{thinkingLabel}{'…'}</span>
-            </div>
-          </div>
         )}
 
         {safety && <SafetyCardHost node={safetyNode} />}
@@ -497,14 +486,11 @@ export function ChatResponsePopover({
             : <p style={{ margin: 0, font: 'var(--type-body)', color: 'var(--text-muted)' }}>{reviewEmptyLabel}</p>
         )}
 
-        {!thinking && !safety && !review && effectiveMessages && (
+        {settled && effectiveMessages && (
           <div
             ref={threadRef} className="navrya-scroll"
-            // Found via a real user report + screenshot: a fixed 360px thread cap, plus this
-            // header/padding's own real overhead, could still exceed roughly half the viewport
-            // on a shorter window - never viewport-relative, so it didn't scale down. One
-            // viewport-relative ceiling (THREAD_MAX_HEIGHT), still bounded by the 60vh outer
-            // wrapper above, so it can never reopen the original overflow bug.
+            // One viewport-relative ceiling for the thread (THREAD_MAX_HEIGHT above bounds the whole
+            // body too), so it can never reopen the original "reply covers the screen" overflow bug.
             style={{ display: 'flex', flexDirection: 'column', gap: 16, maxHeight: THREAD_MAX_HEIGHT, overflowY: 'auto', paddingInlineEnd: 4 }}
           >
             {effectiveMessages.map((m, i) => {
@@ -512,35 +498,84 @@ export function ChatResponsePopover({
               const divider = m.at && (!prev || !prev.at || !sameCalendarDay(m.at, prev.at)) ? dividerLabel(m.at, locale, todayLabel, yesterdayLabel) : null;
               const isUser = m.role === 'user';
               const time = clockText(m.at, locale);
+              const isLastAssistant = i === lastAssistantIndex;
               return (
                 <React.Fragment key={i}>
                   {divider && (
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-                      <span aria-hidden="true" style={{ flex: 1, height: 1, background: 'var(--border-hairline)' }} />
-                      <span style={{ font: 'var(--type-caption)', fontSize: 11, letterSpacing: 'var(--tracking-label)', textTransform: 'uppercase', color: 'var(--text-muted)' }}>{divider}</span>
-                      <span aria-hidden="true" style={{ flex: 1, height: 1, background: 'var(--border-hairline)' }} />
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 10, fontSize: 11, color: TIME }}>
+                      <span aria-hidden="true" style={{ flex: 1, height: 1, background: DIVIDER }} />
+                      {divider}
+                      <span aria-hidden="true" style={{ flex: 1, height: 1, background: DIVIDER }} />
                     </div>
                   )}
                   {isUser ? (
-                    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 6, animation: i === effectiveMessages.length - 1 ? 'navrya-pop-in 300ms var(--ease-out) both' : 'none' }}>
+                    <div style={{ alignSelf: 'flex-end', maxWidth: '80%', display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 4, animation: i === effectiveMessages.length - 1 ? 'navrya-pop-in 300ms var(--ease-out) both' : 'none' }}>
                       <div dir="auto" style={{
-                        maxWidth: 'min(80%,560px)', boxSizing: 'border-box', padding: '9px 14px', borderRadius: 16, borderEndEndRadius: 5,
-                        border: '1px solid color-mix(in srgb,var(--char-accent) 28%,transparent)', background: 'color-mix(in srgb,var(--char-accent) 13%,transparent)',
-                        font: 'var(--type-body)', fontSize: 13.5, lineHeight: '25px', color: 'var(--text-primary)', textWrap: 'pretty'
+                        boxSizing: 'border-box', padding: '9px 14px', borderRadius: 16, borderEndEndRadius: 5,
+                        border: '1px solid ' + accent(28), background: accent(13),
+                        font: 'var(--type-body)', fontSize: 13.5, lineHeight: 1.85, color: TEXT, textWrap: 'pretty'
                       }}>{stripMarkdownTokens(m.content)}</div>
-                      {time && <span style={{ font: 'var(--type-caption)', fontSize: 11, letterSpacing: '.06em', color: 'var(--text-dim)', paddingInlineEnd: 4 }}>{time}</span>}
+                      {(time || m.via === 'voice') && (
+                        <span style={{ display: 'flex', alignItems: 'center', gap: 5, font: 'var(--type-caption)', fontSize: 11, color: TIME }}>
+                          {m.via === 'voice' && <span aria-hidden="true" style={{ display: 'inline-flex', color: 'var(--char-accent-soft)' }}><Icon name="mic" size={11} /></span>}
+                          {[m.via === 'voice' ? peekLabels.voice : '', time].filter(Boolean).join(' · ')}
+                        </span>
+                      )}
                     </div>
                   ) : (
                     <div style={{ display: 'flex', gap: 10, alignItems: 'flex-start' }}>
                       <CompanionSigil portrait={portrait} size={28} dot={false} />
-                      <div style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', gap: 6 }}>
-                        <span style={{ font: 'var(--type-caption)', fontSize: 11.5, color: 'var(--text-muted)' }}>
-                          {[companionName, time, m.latencyMs != null ? latencyText(m.latencyMs) + 's' : ''].filter(Boolean).join(' · ')}
+                      <div style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', alignItems: 'flex-start', gap: 8 }}>
+                        <span style={{ font: 'var(--type-caption)', fontSize: 11.5, color: DIM }}>
+                          {[companionName, m.latencyMs != null ? latencyText(m.latencyMs, locale) + ' ' + (peekLabels.seconds || 's') : (time || '')].filter(Boolean).join(' · ')}
                         </span>
                         <p dir="auto" style={{
-                          margin: 0, font: 'var(--type-body)', fontSize: 14, lineHeight: '27px', color: 'var(--parchment)', textWrap: 'pretty', whiteSpace: 'pre-line',
+                          margin: 0, font: 'var(--type-body)', fontSize: 14, lineHeight: 1.95, color: TEXT_SOFT, textWrap: 'pretty', whiteSpace: 'pre-line',
                           animation: i === effectiveMessages.length - 1 ? 'navrya-line-in 320ms var(--ease-out) both' : 'none'
                         }}>{stripMarkdownTokens(m.content)}</p>
+                        {isLastAssistant && receipts.length > 0 && (
+                          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, maxWidth: '100%' }}>
+                            {receipts.map((cell, k) => <ReceiptChip key={k} label={cell.label} value={cell.value} undo={k === receipts.length - 1 ? undo : null} />)}
+                          </div>
+                        )}
+                        {isLastAssistant && ruleApplied && ruleAppliedLabel && <RuleBanner text={ruleAppliedLabel} />}
+                        {/* One quiet row under the last reply: the feedback question and its choices at the
+                            start, copy / regenerate at the end (the design's row).
+
+                            Voice Command Learning Profile addendum, section 8 (unchanged contract): the
+                            feedback choices never block typing/Voice, and every one fires the SAME
+                            command-feedback path a spoken/typed phrase does (chatDockView.jsx wires each
+                            handler to submit() with the canonical phrase) - a convenience trigger, never a
+                            second, parallel learning mechanism. Correct and "do this next time" are one click
+                            each; the two "wrong" intents share one menu behind the design's single "wrong"
+                            button. */}
+                        {isLastAssistant && (messageActionLabels.copy || onRegenerate || feedback) && (
+                          <div style={{ position: 'relative', alignSelf: 'stretch', display: 'flex', alignItems: 'center', gap: 2, fontSize: 12, color: DIM, minHeight: 30 }}>
+                            {showFeedback && (
+                              <React.Fragment>
+                                <span style={{ font: 'var(--type-caption)', fontSize: 12, color: DIM, flex: 'none', marginInlineEnd: 6 }}>{feedbackLabels.prompt}</span>
+                                {onFeedbackCorrect && <MiniButton iconOnly icon="check" label={feedbackLabels.correct} onClick={onFeedbackCorrect} />}
+                                {onFeedbackRemember && <MiniButton iconOnly icon="bookmark" label={feedbackLabels.rememberThis} onClick={onFeedbackRemember} />}
+                                {(onFeedbackWrongAction || onFeedbackWrongTarget) && (
+                                  <WrongFeedbackMenu
+                                    open={wrongMenuOpen} onToggle={() => setWrongMenuOpen((v) => !v)} onClose={() => setWrongMenuOpen(false)}
+                                    label={feedbackLabels.wrong || feedbackLabels.wrongAction}
+                                    items={(
+                                      <React.Fragment>
+                                        {onFeedbackWrongAction && <MiniButton kind="discard" icon="close" role="menuitem" onClick={() => { setWrongMenuOpen(false); onFeedbackWrongAction(); }}>{feedbackLabels.wrongAction}</MiniButton>}
+                                        {onFeedbackWrongTarget && <MiniButton kind="discard" icon="close" role="menuitem" onClick={() => { setWrongMenuOpen(false); onFeedbackWrongTarget(); }}>{feedbackLabels.wrongTarget}</MiniButton>}
+                                        {onFeedbackDismiss && <MiniButton kind="discard" icon="minus" role="menuitem" onClick={() => { setWrongMenuOpen(false); onFeedbackDismiss(); }}>{feedbackLabels.dismiss}</MiniButton>}
+                                      </React.Fragment>
+                                    )}
+                                  />
+                                )}
+                              </React.Fragment>
+                            )}
+                            <span style={{ flex: 1 }} />
+                            {messageActionLabels.copy && <CopyButton iconOnly text={m.content} label={messageActionLabels.copy} copiedLabel={messageActionLabels.copied} />}
+                            {onRegenerate && lastUserMessage && <MiniButton iconOnly icon="rotate-cw" label={messageActionLabels.regenerate} onClick={() => onRegenerate(lastUserMessage.content)} />}
+                          </div>
+                        )}
                       </div>
                     </div>
                   )}
@@ -550,52 +585,22 @@ export function ChatResponsePopover({
           </div>
         )}
 
-        {!thinking && !safety && !review && meta.length > 0 && (
+        {thinking && (
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+            <CompanionSigil portrait={portrait} size={28} state="thinking" dot={false} />
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10, font: 'var(--type-body)', fontSize: 14, color: 'var(--text-muted)' }}>
+              <Dots /><span>{thinkingLabel}{'…'}</span>
+            </div>
+          </div>
+        )}
+
+        {settled && (!effectiveMessages || lastAssistantIndex === -1) && receipts.length > 0 && (
           <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
-            {meta.map((m, i) => { const cell = metaToStat(m); return <ReceiptChip key={i} label={cell.label} value={cell.value} />; })}
+            {receipts.map((cell, k) => <ReceiptChip key={k} label={cell.label} value={cell.value} undo={k === receipts.length - 1 ? undo : null} />)}
           </div>
         )}
 
-        {!thinking && !safety && !review && ruleApplied && ruleAppliedLabel && <RuleBanner text={ruleAppliedLabel} />}
-
-        {/* One quiet row under the last reply: the feedback question and its choices at the start,
-            copy / regenerate at the end.
-
-            Voice Command Learning Profile addendum, section 8 (unchanged contract): the feedback
-            choices never block typing/Voice, stay dismissible, and every one fires the SAME
-            command-feedback path a spoken/typed phrase does (chatDockView.jsx wires each handler to
-            submit() with the canonical phrase) - a convenience trigger, never a second, parallel
-            learning mechanism. Correct and "do this next time" are one click each; the two
-            "wrong" intents share one menu so the row no longer wraps into five equal pills. */}
-        {!thinking && !safety && !review && effectiveMessages && lastMessage && lastMessage.role === 'assistant' && (messageActionLabels.copy || onRegenerate || feedback) && (
-          <div style={{ display: 'flex', alignItems: 'center', gap: 2, minHeight: 30 }}>
-            {showFeedback && (
-              <ActionRow>
-                <span style={{ font: 'var(--type-caption)', fontSize: 12, color: 'var(--text-dim)', flex: 'none', marginInlineEnd: 4 }}>{feedbackLabels.prompt}</span>
-                {onFeedbackCorrect && <MiniButton iconOnly icon="check" label={feedbackLabels.correct} onClick={onFeedbackCorrect} />}
-                {onFeedbackRemember && <MiniButton iconOnly icon="bookmark" label={feedbackLabels.rememberThis} onClick={onFeedbackRemember} />}
-                {(onFeedbackWrongAction || onFeedbackWrongTarget) && (
-                  <WrongFeedbackMenu
-                    open={wrongMenuOpen} onToggle={() => setWrongMenuOpen((v) => !v)} onClose={() => setWrongMenuOpen(false)}
-                    label={feedbackLabels.wrong || feedbackLabels.wrongAction}
-                    items={(
-                      <React.Fragment>
-                        {onFeedbackWrongAction && <MiniButton kind="discard" icon="close" role="menuitem" onClick={() => { setWrongMenuOpen(false); onFeedbackWrongAction(); }}>{feedbackLabels.wrongAction}</MiniButton>}
-                        {onFeedbackWrongTarget && <MiniButton kind="discard" icon="close" role="menuitem" onClick={() => { setWrongMenuOpen(false); onFeedbackWrongTarget(); }}>{feedbackLabels.wrongTarget}</MiniButton>}
-                      </React.Fragment>
-                    )}
-                  />
-                )}
-                {onFeedbackDismiss && <MiniButton iconOnly icon="x" label={feedbackLabels.dismiss} onClick={onFeedbackDismiss} />}
-              </ActionRow>
-            )}
-            <span style={{ flex: 1 }} />
-            {messageActionLabels.copy && <CopyButton iconOnly text={lastMessage.content} label={messageActionLabels.copy} copiedLabel={messageActionLabels.copied} />}
-            {onRegenerate && lastUserMessage && <MiniButton iconOnly icon="rotate-cw" label={messageActionLabels.regenerate} onClick={() => onRegenerate(lastUserMessage.content)} />}
-          </div>
-        )}
-
-        {!thinking && !safety && !review && suggestions.length > 0 && (
+        {settled && suggestions.length > 0 && (
           <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
             {suggestions.map((s) => (
               <div key={s.id} style={{
@@ -612,7 +617,7 @@ export function ChatResponsePopover({
             ))}
           </div>
         )}
-      </div>}
+      </div>
     </div>
   );
 }

@@ -74,7 +74,7 @@ test('the dock system prompt grounds NAVRYA as a journal/planning tool, never a 
 test('ChatResponsePopover.jsx caps its scrollable message thread with a viewport-relative height, not a fixed pixel value', async () => {
   const source = await readFile(path.join(root, 'public', 'pages', 'shared', 'navrya', 'components', 'assistant', 'ChatResponsePopover.jsx'), 'utf8');
   assert.doesNotMatch(source, /maxHeight:\s*360\b/, 'must not regress back to a fixed-pixel cap that ignores real viewport height');
-  assert.match(source, /maxHeight:\s*'\d+vh'/, 'must use a viewport-relative (vh) cap instead');
+  assert.match(source, /THREAD_MAX_HEIGHT = 'calc\(60vh - 150px\)'/, 'must use a viewport-relative (vh) cap instead - the whole card stays under 60% of the viewport');
 });
 
 // NAVRYA chat dock redesign (NavryaChatDock.dc.html): the old plain "collapsed" boolean/chevron
@@ -83,16 +83,16 @@ test('ChatResponsePopover.jsx caps its scrollable message thread with a viewport
 // unmounting the header), renamed to match the new vocabulary.
 test('ChatResponsePopover.jsx has a real fold/unfold toggle inside the header, and folding hides the body while keeping the header (and the toggle itself) reachable', async () => {
   const source = await readFile(path.join(root, 'public', 'pages', 'shared', 'navrya', 'components', 'assistant', 'ChatResponsePopover.jsx'), 'utf8');
-  assert.match(source, /const \[folded, setFolded\] = React\.useState\(false\)/, 'must track a real folded/expanded state');
-  assert.match(source, /setFolded\(\(f\) => !f\)/, 'the toggle must actually flip the state, not just set it one way');
-  assert.match(source, /\{!folded && <div/, 'folding must hide the body content, not just visually shrink it');
-  // The toggle button itself must be OUTSIDE the foldable body (i.e. still inside <header>),
-  // otherwise folding would hide the only control that could ever unfold it again.
+  // The design's shapes (dockShape.js): folding the scroll is the shape machine's 'fold' move - the reply
+  // goes back to the capsule and the conversation is only a click (or the up key) away. The button lives in
+  // the header, and the header is what every state keeps.
   const headerEnd = source.indexOf('</header>');
-  const toggleFnAt = source.indexOf('function toggleFold()');
-  const toggleButtonAt = source.indexOf('onClick={toggleFold}');
-  assert.ok(toggleFnAt > -1, 'a real toggleFold() function must exist');
-  assert.ok(toggleButtonAt > -1 && toggleButtonAt < headerEnd, 'the fold toggle button must live inside the header, before it closes, so it is never hidden by its own folded state');
+  const toggleButtonAt = source.indexOf('label={sizeLabels.fold} onClick={onFold}');
+  assert.ok(toggleButtonAt > -1 && toggleButtonAt < headerEnd, 'the fold button lives inside the header, before it closes');
+  const view = await readFile(path.join(root, 'navrya-src', 'chatDockView.jsx'), 'utf8');
+  assert.match(view, /onFold=\{\(\) => onDockShapeEvent\('fold'\)\}/);
+  const shape = await readFile(path.join(root, 'public', 'pages', 'shared', 'navrya', 'components', 'assistant', 'dockShape.js'), 'utf8');
+  assert.match(shape, /case 'fold':\s*\n\s*return s\.shape === 'scroll' \|\| s\.shape === 'peek' \? \{ shape: 'capsule'/);
 });
 
 // --- trade.calculator's own real alias coverage (found via a real user report: "open long trade

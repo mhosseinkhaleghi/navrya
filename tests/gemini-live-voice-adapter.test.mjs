@@ -108,7 +108,7 @@ test('Gemini errors can explicitly end Voice and always release failed transport
     assert.match(consoleSource, /<DeniedCard strings=\{strings\} onRetry=\{onVoiceToggle\} onEnd=\{onVoiceEnd\}/);
     // ChatDock capsule exact pass: the explicit end-Voice control is the voice row's own danger
     // button (its accessible name is strings.close), still wired straight to onVoiceEnd.
-    assert.match(consoleSource, /<RowButton className="navrya-voice-console-end" icon="x" tone="danger" label=\{strings\.close\} onClick=\{onVoiceEnd\} \/>/);
+    assert.match(consoleSource, /<RowButton className="navrya-voice-console-end" icon="x" tone="danger" label=\{strings\.close\} onClick=\{onVoiceEnd\} size=\{buttonSize\} \/>/);
     assert.match(consoleSource, /aria-label=\{label\} title=\{label\} onClick=\{onClick\}/);
   });
 });

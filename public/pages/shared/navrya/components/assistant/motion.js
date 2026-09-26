@@ -20,7 +20,16 @@ const ASSISTANT_MOTION_CSS = `
 @keyframes navrya-sweep-b{0%{transform:translateX(-110%);opacity:0}18%{opacity:1}100%{transform:translateX(110%);opacity:0}}
 @keyframes navrya-pulse-a{0%{transform:scale(.6);opacity:.55}100%{transform:scale(2.1);opacity:0}}
 @keyframes navrya-pulse-b{0%{transform:scale(.6);opacity:.55}100%{transform:scale(2.1);opacity:0}}
-[data-navrya-assistant] input::placeholder{color:var(--text-muted);opacity:1}
+@keyframes navrya-cap-pulse{0%,100%{opacity:.25;transform:scale(1)}50%{opacity:.9;transform:scale(1.06)}}
+@keyframes navrya-cap-bar{0%,100%{transform:scaleY(.35)}50%{transform:scaleY(1)}}
+@keyframes navrya-cap-caret{0%,49%{opacity:1}50%,100%{opacity:0}}
+@keyframes navrya-cap-shimmer{0%{background-position:200% 0}100%{background-position:-200% 0}}
+@keyframes navrya-seed-in{from{transform:translateY(14px)}to{transform:translateY(0)}}
+/* The dock's own move between shapes (plate III: "220ms - --dur-expand - ease-out; only the height and the position
+   move"): a slide, never a fade or a scale. */
+@keyframes navrya-dock-rise{from{transform:translateY(14px)}to{transform:translateY(0)}}
+@keyframes navrya-dock-sink{from{transform:translateY(0)}to{transform:translateY(14px)}}
+[data-navrya-assistant] input::placeholder{color:#9A968A;opacity:1}
 [data-navrya-assistant] input:focus{outline:none}
 @media (prefers-reduced-motion:reduce){[data-navrya-assistant] *,[data-navrya-assistant]{animation:none!important;transition:none!important}}
 `;

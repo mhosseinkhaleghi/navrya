@@ -39,7 +39,7 @@ test('dockExplicitlyOpened is set true by three real explicit gestures: focusing
 
 test('ChatDock.jsx exposes the real onInputFocus prop, fired alongside (never replacing) its own existing local `focused` styling state', () => {
   assert.match(chatDockSource, /onInputFocus/);
-  assert.match(chatDockSource, /onFocus=\{\(\) => \{ setFocused\(true\); if \(onInputFocus\) onInputFocus\(\); \}\}/);
+  assert.match(chatDockSource, /onFocus=\{\(\) => \{ setFocused\(true\); if \(onInputFocus\) onInputFocus\(\); emit\('focus'\); \}\}/, 'focus also tells the shape machine - a seed can never stay collapsed under a caret');
 });
 
 // --- Items 2/7: Voice initiates the first-run conversation; the real trigger point ---

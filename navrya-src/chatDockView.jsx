@@ -3,6 +3,10 @@ import { createRoot } from 'react-dom/client';
 import { ChatDock } from '../public/pages/shared/navrya/components/assistant/ChatDock.jsx';
 import { ChatResponsePopover, MiniButton, ActionRow } from '../public/pages/shared/navrya/components/assistant/ChatResponsePopover.jsx';
 import { CompanionCard } from '../public/pages/shared/navrya/components/assistant/CompanionCard.jsx';
+import { ModelGlyph } from '../public/pages/shared/navrya/components/assistant/ModelSwitcher.jsx';
+import { useDockShape } from '../public/pages/shared/navrya/components/assistant/dockShape.js';
+import { CapsuleTop } from '../public/pages/shared/navrya/components/assistant/CapsuleTop.jsx';
+import { accent as accentTint, cardBackground, cardShadow, EDGE, DIVIDER } from '../public/pages/shared/navrya/components/assistant/dockDesign.js';
 import { Icon } from '../public/pages/shared/navrya/components/core/Icon.jsx';
 // OpenAI Realtime is retired as a Voice Mode transport (GPT-Live 1 migration) - only its shared
 // VOICE_STATES enum is still imported here; createVoiceSession() is never called by this file any
@@ -14,7 +18,9 @@ import { createGptLiveSession } from './gptLiveVoice.js';
 import { CHARACTERS } from './characters.js';
 import { stringsFor } from './i18n.js';
 import { assetUrl } from '../public/pages/shared/navrya/components/core/AssetBase.jsx';
-import { workflowReceipts, receiptEntry, companionDisplayName } from './chatDockReceipts.js';
+import { workflowReceipts, receiptEntry, companionDisplayName, NAV_LABEL_KEYS } from './chatDockReceipts.js';
+import { buildFormVoice, fieldStatesFor, formVoiceFingerprint } from './dockFormVoice.js';
+import { createFieldStateDecorator } from './dockFieldStates.js';
 
 function languageOf(i18n) { return i18n && typeof i18n.language === 'function' ? i18n.language() : 'en'; }
 
@@ -30,11 +36,40 @@ function companionFor(i18n, navryaCharacter) {
 
 // Lookups chatDockReceipts.js needs: the sidebar's own nav labels, and a form field's real rendered
 // label from the process registry's interview metadata (null when that form has none yet).
+// The dialog the form voice is about: the last (top-most) open aria-modal dialog, or null.
+function topDialog() {
+  if (typeof document === 'undefined') return null;
+  const all = document.querySelectorAll('[role="dialog"][aria-modal="true"]');
+  return all.length ? all[all.length - 1] : null;
+}
+
+// The page the user is on, as the sidebar labels it ("Dashboard") - the reply header's "Ready · on
+// Dashboard". Re-read whenever the navigation store changes; null when the store or the label is unknown.
+function activePageLabel(i18n) {
+  const store = typeof window !== 'undefined' ? window.TradeJournalNavryaStore : null;
+  const state = store && typeof store.getState === 'function' ? store.getState() : null;
+  const key = state && NAV_LABEL_KEYS[state.activeId];
+  const strings = stringsFor(languageOf(i18n));
+  return (key && strings && strings[key]) || null;
+}
+
+function useActivePageLabel(i18n) {
+  const [label, setLabel] = React.useState(() => activePageLabel(i18n));
+  React.useEffect(() => {
+    const store = window.TradeJournalNavryaStore;
+    const update = () => setLabel(activePageLabel(i18n));
+    update();
+    return store && typeof store.subscribe === 'function' ? store.subscribe(update) : undefined;
+  }, [i18n]);
+  return label;
+}
+
 function receiptOptions(i18n) {
   const strings = stringsFor(languageOf(i18n));
   const registry = typeof window !== 'undefined' ? window.TradeJournalAIProcessRegistry : null;
   return {
     navLabel: (key) => (strings && strings[key]) || null,
+    wentTo: (page) => i18n.t('aiDockReceiptWentTo', { page }),
     fieldLabel: (processId, path) => {
       if (!processId || !registry || typeof registry.interviewFieldMeta !== 'function') return null;
       try {
@@ -157,23 +192,20 @@ export function ConversationHistoryDropdown({ i18n, loading, conversations, acti
       <Icon name={icon} size={16} />
     </button>
   );
-  const tick = (side) => (
-    <span aria-hidden="true" style={{ position: 'absolute', top: 9, [side === 'start' ? 'insetInlineStart' : 'insetInlineEnd']: 9, width: 9, height: 9, pointerEvents: 'none', borderTop: '1px solid rgba(214,175,107,.55)', [side === 'start' ? 'borderInlineStart' : 'borderInlineEnd']: '1px solid rgba(214,175,107,.55)' }} />
-  );
 
   return (
     <section
       aria-label={i18n.t('aiDockHistory')} data-navrya-assistant="history"
       style={{
         position: 'relative', width: '100%', boxSizing: 'border-box', overflow: 'hidden',
-        borderRadius: '20px 20px 0 0', border: '1px solid var(--border-gold-strong)', borderBottom: 0,
-        background: 'linear-gradient(180deg,color-mix(in srgb,var(--char-accent) 11%,#0B0E14) 0%,#0B0E14 38%,#0A0D12 100%)',
-        boxShadow: '0 -12px 48px rgba(0,0,0,.45),0 0 40px var(--char-glow),inset 0 1px 0 rgba(244,234,215,.12)',
-        animation: 'navrya-pop-in 220ms var(--ease-out) both'
+        borderRadius: '20px 20px 0 0', border: '1px solid ' + EDGE, borderBottom: 0,
+        background: cardBackground('card'),
+        boxShadow: '0 -12px 48px rgba(0,0,0,.45),0 0 40px ' + accentTint(10),
+        animation: 'navrya-dock-rise var(--dur-expand) var(--ease-out) both'
       }}
     >
-      {tick('start')}{tick('end')}
-      <header style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '16px 12px 12px 14px', borderBottom: '1px solid var(--border-hairline)' }}>
+      <CapsuleTop />
+      <header style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '18px 12px 12px 14px', borderBottom: '1px solid ' + DIVIDER }}>
         <span aria-hidden="true" style={{ width: 36, height: 36, flex: 'none', borderRadius: 11, display: 'grid', placeItems: 'center', border: '1px solid color-mix(in srgb,var(--char-accent) 55%,transparent)', background: 'var(--char-active-surface)', color: 'var(--char-accent)' }}>
           <Icon name="history" size={17} />
         </span>
@@ -252,6 +284,55 @@ export function ConversationHistoryDropdown({ i18n, loading, conversations, acti
   );
 }
 
+// Re-reads the form being filled (dockFormVoice.js) whenever the process registry reports a change and on a
+// slow tick (a form closing announces nothing), and only hands React a new model when it really changed.
+function useFormVoiceModel({ i18n, core, transcriptRef, voiceSaid, voiceActive, enabled }) {
+  const [model, setModel] = React.useState(null);
+  const last = React.useRef('');
+  const inputs = React.useRef({});
+  inputs.current = { voiceSaid, voiceActive };
+  const refresh = React.useCallback(() => {
+    const engine = window.TradeJournalAIWorkflowEngine;
+    const profile = window.TradeJournalAICompanionProfile;
+    const dialog = topDialog();
+    const transcript = transcriptRef && transcriptRef.current ? transcriptRef.current : [];
+    let lastAssistant = '';
+    for (let i = transcript.length - 1; i >= 0; i -= 1) { if (transcript[i] && transcript[i].role === 'assistant') { lastAssistant = String(transcript[i].content || ''); break; } }
+    let next = null;
+    try {
+      next = buildFormVoice({
+        registry: window.TradeJournalAIProcessRegistry,
+        workflow: engine && typeof engine.current === 'function' ? engine.current() : null,
+        pendingWrite: engine && typeof engine.pendingFieldWrite === 'function' ? engine.pendingFieldWrite() : null,
+        skipped: (processId) => (core && typeof core.skippedInterviewPaths === 'function' ? core.skippedInterviewPaths(processId) : []),
+        title: dialog ? dialog.getAttribute('aria-label') || '' : '',
+        confirmMode: profile && typeof profile.formWriteConfirmation === 'function' ? profile.formWriteConfirmation() : 'direct',
+        questionText: lastAssistant,
+        said: inputs.current.voiceSaid,
+        voiceActive: inputs.current.voiceActive,
+        labels: {
+          askEach: i18n.t('aiFormVoiceAskEach'), direct: i18n.t('aiFormVoiceDirect'),
+          yes: i18n.t('aiFormVoiceSayYes'), no: i18n.t('aiFormVoiceSayNo'),
+          confirmYes: i18n.t('aiFormVoiceConfirmYes'), confirmNo: i18n.t('aiFormVoiceConfirmNo')
+        }
+      });
+    } catch (_err) { next = null; }
+    const print = formVoiceFingerprint(next) + '|' + (next ? next.questionText + '|' + next.said.length + '|' + next.engaged + '|' + next.title : '');
+    if (print === last.current) return;
+    last.current = print;
+    setModel(next);
+  }, [i18n, core, transcriptRef]);
+  React.useEffect(() => {
+    if (!enabled) { last.current = ''; setModel(null); return undefined; }
+    refresh();
+    const tick = setInterval(refresh, 700);
+    const onChange = () => refresh();
+    window.addEventListener('tradejournal:ai-process-changed', onChange);
+    return () => { clearInterval(tick); window.removeEventListener('tradejournal:ai-process-changed', onChange); };
+  }, [enabled, refresh, voiceSaid, voiceActive]);
+  return model;
+}
+
 function ChatDockApp({ i18n, core, settingsStore, tradeI18n, navryaCharacter, voiceText }) {
   const [text, setText] = React.useState('');
   const [busy, setBusy] = React.useState(false);
@@ -307,6 +388,19 @@ function ChatDockApp({ i18n, core, settingsStore, tradeI18n, navryaCharacter, vo
   // state for it.
   const [voiceState, setVoiceState] = React.useState(VOICE_STATES.IDLE);
   const [voiceMuted, setVoiceMuted] = React.useState(false);
+  // The dock's shape (dockShape.js): a fresh assistant reply is a PEEK, the whole conversation only
+  // opens when the user opens it, and a collapsed dock is the 64px seed. A live voice session keeps its
+  // reply as the scroll above the console, as it always did.
+  const assistantReplyCount = popover && popover.state === 'answer' && popover.messages ? popover.messages.filter((m) => m.role === 'assistant').length : 0;
+  const dockShapeState = useDockShape({ replyCount: assistantReplyCount, replyOpen: !!(popover && popover.open), voiceActive: voiceState !== VOICE_STATES.IDLE });
+  const dispatchDockShape = dockShapeState.dispatch;
+  const onDockShapeEvent = React.useCallback((type) => dispatchDockShape({ type }), [dispatchDockShape]);
+  // A mental-health safety card or a screenshot review must never wait behind a collapsed dock.
+  const popoverStateNow = popover && popover.open ? popover.state : null;
+  React.useEffect(() => {
+    if (popoverStateNow === 'safety' || popoverStateNow === 'review') { dispatchDockShape({ type: 'open' }); dispatchDockShape({ type: 'expand' }); }
+  }, [popoverStateNow, dispatchDockShape]);
+  const pageLabel = useActivePageLabel(i18n);
   // fix/voice-mode-hosted-connection (Phase 3): the sanitized stage aiVoiceRealtime.js's connect()
   // classified the most recent failure into (see that file's classifyMintFailureStage()/
   // classifySdpFailureStage()) - never a raw error message, credential, or upstream detail, only
@@ -342,6 +436,8 @@ function ChatDockApp({ i18n, core, settingsStore, tradeI18n, navryaCharacter, vo
   // onOutputTranscript below) - VoiceConsole.jsx's own showHeard/showReply gating is what actually
   // decides, per adapter, whether to reveal that live value or wait for the final one.
   const [voiceHeardText, setVoiceHeardText] = React.useState('');
+  // The last few things the user SAID in this voice session (the sidecar's "last said" list).
+  const [voiceSaid, setVoiceSaid] = React.useState([]);
   const [voiceReplyCaption, setVoiceReplyCaption] = React.useState('');
   const voiceRef = React.useRef(null);
   // Voice Mode performance pass (feature/voice-mode-performance): conversationEpoch is bumped by
@@ -418,7 +514,7 @@ function ChatDockApp({ i18n, core, settingsStore, tradeI18n, navryaCharacter, vo
     settingsStore.saveSettings({ provider: nextProvider });
   }
 
-  function closePopover() { setPopover((p) => (p ? { ...p, open: false } : p)); }
+  function closePopover() { dispatchDockShape({ type: 'close' }); setPopover((p) => (p ? { ...p, open: false } : p)); }
 
   // Slice R1: the one place transcript state ever changes - keeps transcriptRef (submit()'s own
   // synchronous read) and the rendered React state in permanent agreement. Never a second source
@@ -509,6 +605,7 @@ function ChatDockApp({ i18n, core, settingsStore, tradeI18n, navryaCharacter, vo
 
   async function toggleHistory() {
     if (historyOpen) { setHistoryOpen(false); return; }
+    dispatchDockShape({ type: 'open' });
     setHistoryOpen(true);
     if (!historyStore) return;
     setHistoryLoading(true);
@@ -554,6 +651,7 @@ function ChatDockApp({ i18n, core, settingsStore, tradeI18n, navryaCharacter, vo
       replaceTranscript(messages.slice(-24));
       replaceConversationId(record.id);
       setPopover({ open: true, state: 'answer', messages, suggestions: [], activeProcessId: null });
+      dispatchDockShape({ type: 'expand' });
     } catch (_err) { /* no-op - resuming is best-effort */ }
   }
 
@@ -775,6 +873,8 @@ function ChatDockApp({ i18n, core, settingsStore, tradeI18n, navryaCharacter, vo
           open: true, state: 'answer', messages: nextTranscript,
           suggestions: autoApplyVoiceSuggestions ? [] : rawSuggestions.map((s, i) => ({ id: s.id || 'sugg-' + i, label: receipts.fieldLabel(activeProcessId, s.path), ...s })),
           activeProcessId: result.activeProcess ? result.activeProcess.id : null,
+          // The action this turn drove, so the reply can offer "undo" for the one action that can be undone (a page change).
+          lastActionId: result.workflow && result.workflow.actionId ? result.workflow.actionId : null,
           // result.kind === 'workflow' (an AI-discovered/in-progress action, e.g. session.create):
           // fields it already applied live are shown as plain meta chips - reusing the popover's
           // existing meta row rather than a new dedicated "AI action progress" component. A voice
@@ -995,8 +1095,13 @@ function ChatDockApp({ i18n, core, settingsStore, tradeI18n, navryaCharacter, vo
   // see ai-voice-turn-coordinator.js) all the way to PlaybackController's enqueue() below, so
   // gptLiveVoice.js's own speak(text, entry) can correlate this reply with the exact GPT-Live turn
   // that produced it (see that file's DELEGATION-CORRELATION REPAIR comment).
+  // The sidecar's "last said": the last few finalized things the user said this session, with their time.
+  function rememberSaid(text) {
+    setVoiceSaid((list) => list.concat([{ text, time: new Date().toLocaleTimeString(i18n.language(), { hour: '2-digit', minute: '2-digit' }) }]).slice(-3));
+  }
   function onVoiceTranscript(transcriptText, transportMeta) {
     setVoiceHeardText(transcriptText);
+    rememberSaid(transcriptText);
     const wasAwaitingCompanionOpeningReply = awaitingCompanionOpeningReplyRef.current;
     awaitingCompanionOpeningReplyRef.current = false;
     const transcriptAt = (typeof performance !== 'undefined' && performance.now) ? performance.now() : Date.now();
@@ -1436,6 +1541,7 @@ function ChatDockApp({ i18n, core, settingsStore, tradeI18n, navryaCharacter, vo
   // comment.
   function endVoice() {
     if (!voiceRef.current) return;
+    setVoiceSaid([]);
     voiceRef.current.disconnect();
     abortActiveRequests('voice');
     // "Finish NAVRYA Voice Mode" brief, section 4.1/4.2: the same reasoning as the mic toggle's
@@ -1566,13 +1672,115 @@ function ChatDockApp({ i18n, core, settingsStore, tradeI18n, navryaCharacter, vo
 
   const companion = companionFor(i18n, navryaCharacter);
 
+  // ---- Voice while a form is open (plates XIV-XVIII) -----------------------------------------------
+  // The model of the form being filled (dockFormVoice.js), re-read whenever the registry says something
+  // changed and on a slow tick, and only re-rendered when it really changed.
+  const formVoice = useFormVoiceModel({ i18n, core, transcriptRef, voiceSaid, voiceActive: voiceState !== VOICE_STATES.IDLE, enabled: dockShapeState.shape !== 'seed' });
+  // Something the user "said" without saying it: a quick choice, "skip", the field's yes / no. It goes
+  // through exactly the path their own words would - the voice turn while a session is live, the typed
+  // message otherwise - so the reply, the receipt and the learning all behave the same.
+  function sayAsUser(text) {
+    if (!text) return;
+    if (voiceState !== VOICE_STATES.IDLE && voiceRef.current) { onVoiceTranscript(text, null); return; }
+    submit(text);
+  }
+  function chooseFormVoiceOption(choice) {
+    if (!choice) return;
+    if (choice.kind === 'confirm') { sayAsUser(i18n.t('aiFormVoiceSayYes')); return; }
+    if (choice.kind === 'reject') { sayAsUser(i18n.t('aiFormVoiceSayNo')); return; }
+    sayAsUser(choice.label);
+  }
+  function skipFormVoiceField() {
+    if (!formVoice || !formVoice.current || typeof core.skipInterviewField !== 'function') return;
+    core.skipInterviewField(formVoice.processId, formVoice.current.path);
+    sayAsUser(i18n.t('aiFormVoiceSaySkip'));
+  }
+  // The field states drawn on the real form: rebuilt whenever the model, what is heard or the phase moves.
+  const fieldDecoratorRef = React.useRef(null);
+  const sayAsUserRef = React.useRef(sayAsUser);
+  sayAsUserRef.current = sayAsUser;
+  React.useEffect(() => {
+    if (typeof document === 'undefined') return undefined;
+    const decorator = createFieldStateDecorator(document, {
+      badges: { asking: i18n.t('aiFormVoiceAsking'), hearing: i18n.t('aiFormVoiceHearing'), filled: companionFor(i18n, navryaCharacter).name },
+      confirm: { prompt: i18n.t('aiFormVoiceConfirm'), yes: i18n.t('aiFormVoiceConfirmYes'), no: i18n.t('aiFormVoiceConfirmNo') },
+      onConfirm: (decision) => sayAsUserRef.current(i18n.t(decision === 'confirm' ? 'aiFormVoiceSayYes' : 'aiFormVoiceSayNo'))
+    });
+    fieldDecoratorRef.current = decorator;
+    const reposition = () => decorator.reposition();
+    window.addEventListener('resize', reposition);
+    document.addEventListener('scroll', reposition, true);
+    return () => { window.removeEventListener('resize', reposition); document.removeEventListener('scroll', reposition, true); decorator.destroy(); fieldDecoratorRef.current = null; };
+  }, [i18n, navryaCharacter]);
+  React.useEffect(() => {
+    const decorator = fieldDecoratorRef.current;
+    if (!decorator) return;
+    const dialog = topDialog();
+    const hearing = voiceState === VOICE_STATES.USER_SPEAKING;
+    const engaged = !!(formVoice && formVoice.engaged);
+    decorator.update(engaged ? dialog : null, engaged ? fieldStatesFor(formVoice, voiceHeardText, hearing) : [], engaged ? formVoice.allLabels : []);
+  }, [formVoice, voiceHeardText, voiceState]);
+  const companionProfile = window.TradeJournalAICompanionProfile;
+  const [formConfirmMode, setFormConfirmMode] = React.useState(() => (companionProfile && typeof companionProfile.formWriteConfirmation === 'function' ? companionProfile.formWriteConfirmation() : 'direct'));
+  function toggleFormConfirmMode() {
+    if (!companionProfile || typeof companionProfile.setFormWriteConfirmation !== 'function') return;
+    const next = formConfirmMode === 'ask_each' ? 'direct' : 'ask_each';
+    companionProfile.setFormWriteConfirmation(next);
+    setFormConfirmMode(next);
+  }
+  const digitFormat = new Intl.NumberFormat(i18n.language(), { useGrouping: false });
+  const localizeDigits = (n) => String(n).replace(/[0-9]/g, (d) => digitFormat.format(Number(d)));
+  // Psychology forms are answered slowly: the transport is asked to speak calmly while one is being filled by
+  // voice (only GPT-Live can be told; the others simply keep their pace).
+  const calmVoice = !!(formVoice && formVoice.engaged && formVoice.calm);
+  React.useEffect(() => {
+    const voice = voiceRef.current;
+    if (voice && typeof voice.setCalm === 'function' && voiceState !== VOICE_STATES.IDLE && voiceState !== VOICE_STATES.CONNECTING) voice.setCalm(calmVoice);
+  }, [calmVoice, voiceState]);
+  const formVoiceLabels = {
+    questionOf: i18n.t('aiFormVoiceQuestionOf'), progress: i18n.t('aiFormVoiceProgress'), skip: i18n.t('aiFormVoiceSkip'), skipQuestion: i18n.t('aiFormVoiceSkipQuestion'),
+    later: i18n.t('aiFormVoiceLater'), calm: i18n.t('aiFormVoiceCalm'), waitingConfirm: i18n.t('aiFormVoiceWaiting'), voiceChatOn: i18n.t('aiFormVoiceChatOn'),
+    voice: i18n.t('aiDockVoiceTag'), expandConversation: i18n.t('aiDockOpenConversation')
+  };
+
+  // What the dock shows right now: history and a live voice session always show the conversation as the
+  // scroll; otherwise it is whatever shape the user's own moves left it in.
+  const voiceActive = voiceState !== VOICE_STATES.IDLE;
+  const replyVisible = !!(popover && popover.open);
+  const effectiveShape = historyOpen ? 'scroll' : voiceActive ? (replyVisible ? 'scroll' : 'capsule') : dockShapeState.shape;
+  const showReply = replyVisible && !historyOpen && (effectiveShape === 'peek' || effectiveShape === 'scroll');
+  const engineMenu = models && models.length > 1 && activeModel
+    ? {
+      switchLabel: i18n.t('aiDockSwitchEngine', { engine: activeModel.label }),
+      items: models.map((m) => ({ key: m.id, role: 'menuitemradio', label: m.label, glyph: <ModelGlyph model={m} size={15} />, active: m.id === activeModel.id, onSelect: () => onModelChange(m.id) }))
+    }
+    : null;
+  const statusText = pageLabel ? i18n.t('aiDockStatusOn', { page: pageLabel }) : i18n.t('aiDockStatusReady');
+  // Undo for the one action that really can be undone: a page change the assistant just made (character-app.jsx
+  // records where it came from). Offered only while the user is still on the page it went to.
+  const lastNavigation = typeof window !== 'undefined' ? window.TradeJournalAILastNavigation : null;
+  const navStore = typeof window !== 'undefined' ? window.TradeJournalNavryaStore : null;
+  const activePageNow = navStore && typeof navStore.getState === 'function' ? navStore.getState().activeId : null;
+  const navigationUndo = popover && popover.lastActionId === 'navigate.to' && lastNavigation && lastNavigation.from && lastNavigation.toActiveId === activePageNow && (Date.now() - lastNavigation.at) < 180000
+    ? { label: i18n.t('aiDockUndo'), run: () => { navStore.setActiveId(lastNavigation.from); window.TradeJournalAILastNavigation = null; } }
+    : null;
+
   return (
     <div data-character={navryaCharacter} dir={rtl ? 'rtl' : 'ltr'}>
       <input ref={fileInputRef} type="file" accept="image/*" hidden onChange={onFileChosen} />
       <ChatDock
         dir={rtl ? 'rtl' : 'ltr'}
-        companion={companion} surfaceJoined={historyOpen || !!(popover && popover.open)}
-        placeholder={i18n.t('aiDockPlaceholder')}
+        companion={companion} surfaceJoined={historyOpen || showReply}
+        shape={effectiveShape} onShapeEvent={onDockShapeEvent} unseenCount={dockShapeState.unseen} replyAvailable={replyVisible}
+        seedLabel={i18n.t('aiDockSeedOpen', { name: companion.name })} seedPillLabel={i18n.t('aiDockReplyReady')}
+        pinned={dockShapeState.pinned} autoCollapse={dockShapeState.autoCollapse}
+        onAutoCollapseChange={dockShapeState.setAutoCollapse} autoCollapseLabel={i18n.t('aiDockAutoCollapse')}
+        placeholder={i18n.t('aiDockPlaceholderNamed', { name: companion.name })} inputLabel={i18n.t('aiDockMessageTo', { name: companion.name })}
+        engineLabel={activeModel ? i18n.t('aiDockSwitchEngine', { engine: activeModel.label }) : undefined}
+        openConversationLabel={i18n.t('aiDockOpenConversation')}
+        formVoice={formVoice && formVoice.engaged ? formVoice : null} formVoiceLabels={formVoiceLabels} numberFormat={localizeDigits}
+        onFormVoiceChoice={chooseFormVoiceOption} onFormVoiceSkip={skipFormVoiceField} onFormVoiceLater={endVoice}
+        formConfirmActive={formConfirmMode === 'ask_each'} onFormConfirmToggle={companionProfile ? toggleFormConfirmMode : undefined} formConfirmLabel={i18n.t('aiFormVoiceAskEach')}
         sendLabel={i18n.t('aiDockSend')}
         voiceState={voiceState} voiceMuted={voiceMuted} voicePermissionDenied={voicePermissionDenied}
         voiceManualFinishPending={voiceManualFinishPending} voiceSupportsManualFinish={voiceSupportsManualFinish}
@@ -1627,11 +1835,18 @@ function ChatDockApp({ i18n, core, settingsStore, tradeI18n, navryaCharacter, vo
         )}
         {/* While history is open it is the panel on the dock (it replaces the reply view, like
             switching views - see ConversationHistoryDropdown); the reply comes back on close. */}
-        {popover && !historyOpen && (
+        {showReply && (
           <ChatResponsePopover
             open={popover.open} state={popover.state}
-            companion={companion} joined statusLabel={i18n.t('aiDockStatusReady')}
-            onHistory={toggleHistory} historyLabel={i18n.t('aiDockHistory')}
+            companion={companion} joined statusLabel={statusText}
+            shape={effectiveShape}
+            onExpand={() => onDockShapeEvent('expand')} onFold={() => onDockShapeEvent('fold')}
+            pinned={dockShapeState.pinned} onPinToggle={() => dockShapeState.setPinned(!dockShapeState.pinned)}
+            pinLabel={i18n.t('aiDockPin')} unpinLabel={i18n.t('aiDockUnpin')} pinIcon={rtl ? 'panel-left' : 'panel-right'}
+            engineMenu={engineMenu} justNowLabel={i18n.t('aiDockJustNow', { name: companion.name })} undo={navigationUndo}
+            choices={formVoice && formVoice.engaged ? formVoice.choices : []} onChoice={chooseFormVoiceOption}
+            peekLabels={{ expand: i18n.t('aiDockUnfold'), close: i18n.t('aiDockClosePeek'), voice: i18n.t('aiDockVoiceTag'), seconds: i18n.t('aiDockSecondsShort') }}
+            onHistory={toggleHistory} historyLabel={i18n.t('aiDockPreviousChats')}
             title={popover.title || i18n.t('aiDockLauncherLabel')}
             prompt={popover.prompt} lines={popover.lines || []} messages={popover.messages}
             userLabel={i18n.t('aiDockYou')} assistantLabel={i18n.t('aiDockAssistant')}

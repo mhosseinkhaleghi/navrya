@@ -968,7 +968,12 @@ export function mountCharacterApp(character) {
         submit: (known) => {
           var target = NAVIGATE_TARGETS[known.domainId];
           if (!target) return { navigated: false, domainId: known.domainId };
+          // Where it came from, so the reply's receipt can offer "undo" (chatDockView.jsx) - a page change is
+          // the one assistant action that is trivially and safely reversible.
+          var fromActiveId = store.getState().activeId;
           target();
+          var toActiveId = store.getState().activeId;
+          window.TradeJournalAILastNavigation = fromActiveId && toActiveId !== fromActiveId ? { from: fromActiveId, toActiveId: toActiveId, at: Date.now() } : null;
           return { navigated: true, domainId: known.domainId };
         },
         resultContext: () => {}

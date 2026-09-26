@@ -30,7 +30,9 @@ function feedbackBlock() {
 }
 
 test('the feedback row only renders for the LAST assistant message and only when `feedback` is truthy - never speculatively, never for a user message, never mid-thinking/safety/review', () => {
-  assert.match(popoverSrc, /const showFeedback = !thinking && !safety && !review && effectiveMessages && lastMessage && lastMessage\.role === 'assistant' && feedback;/);
+  assert.match(popoverSrc, /const settled = !thinking && !safety && !review;/);
+  assert.match(popoverSrc, /const showFeedback = settled && effectiveMessages && lastMessage && lastMessage\.role === 'assistant' && feedback;/);
+  assert.match(popoverSrc, /\{isLastAssistant && \(messageActionLabels\.copy \|\| onRegenerate \|\| feedback\) && \(/, 'the row lives inside the last assistant message, under its receipt');
   const block = feedbackBlock();
   assert.match(block, /onFeedbackCorrect && <MiniButton/);
   assert.match(block, /onFeedbackRemember && <MiniButton/);
@@ -41,12 +43,12 @@ test('the feedback row only renders for the LAST assistant message and only when
 
 test('the feedback row reuses the existing MiniButton/ActionRow components - no new design system', () => {
   const block = feedbackBlock();
-  assert.match(block, /<ActionRow>/);
+  assert.match(block, /<MiniButton iconOnly icon="check" label=\{feedbackLabels\.correct\}/);
   assert.match(block, /<WrongFeedbackMenu/);
   assert.doesNotMatch(block, /className="navrya-feedback|new-design/i);
   // The menu itself is built from the same MiniButton, not a second button style.
   const menu = popoverSrc.slice(popoverSrc.indexOf('function WrongFeedbackMenu'), popoverSrc.indexOf('export function ChatResponsePopover'));
-  assert.match(menu, /<MiniButton iconOnly icon="thumbs-down"/);
+  assert.match(menu, /<MiniButton iconOnly icon="x"/, 'the design\'s single "wrong" button (an X) opens the two real intents');
 });
 
 test('chatDockView.jsx tracks answered receipts per conversation (respondedReceiptIdsRef), resetting it on both New Chat and resume - the same isolation boundary every other per-conversation transient state in this file already uses', () => {

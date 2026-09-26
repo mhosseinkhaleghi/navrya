@@ -33,12 +33,14 @@ function display(value) {
   return String(value);
 }
 
-// opts: { navLabel(key) -> string|null, fieldLabel(processId, path) -> string|null }
+// opts: { navLabel(key) -> string|null, wentTo(pageLabel) -> string (optional sentence), fieldLabel(processId, path) -> string|null }
 export function receiptEntry(processId, path, value, opts) {
   const o = opts || {};
   if (path === 'domainId') {
     const key = NAV_LABEL_KEYS[String(value)];
     const label = key && typeof o.navLabel === 'function' ? o.navLabel(key) : null;
+    // The receipt reads as what happened ("Went to Dashboard") when the caller supplies the sentence.
+    if (label && typeof o.wentTo === 'function') return o.wentTo(label);
     return label || display(value);
   }
   const label = typeof o.fieldLabel === 'function' ? o.fieldLabel(processId, path) : null;

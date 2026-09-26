@@ -4,8 +4,8 @@ import path from 'node:path';
 import test from 'node:test';
 
 import {
-  computeSideLane, sameLane, sideForDir, sideReservePx, isLaneDialog,
-  SIDECAR_WIDTH_PX, SIDECAR_EDGE_PX, SIDECAR_MIN_HEIGHT_PX
+  computeSideLane, computePinnedLane, computeWeld, computeAnchor, isLongForm, sameLane, sameWeld, sameAnchor, sideForDir, sideReservePx, isLaneDialog,
+  SIDECAR_WIDTH_PX, SIDECAR_EDGE_PX, SIDECAR_MIN_HEIGHT_PX, DOCK_RESERVED_PX, WELD_MIN_ROOM_PX
 } from '../public/pages/shared/navrya/components/assistant/dockSideLane.js';
 import { receiptEntry, workflowReceipts, NAV_LABEL_KEYS, companionDisplayName } from '../navrya-src/chatDockReceipts.js';
 
@@ -18,11 +18,12 @@ import { receiptEntry, workflowReceipts, NAV_LABEL_KEYS, companionDisplayName } 
 const root = process.cwd();
 const read = (...p) => readFile(path.join(root, ...p), 'utf8').then((s) => s.replace(/\r\n/g, '\n'));
 const assistant = (f) => read('public', 'pages', 'shared', 'navrya', 'components', 'assistant', f);
-const [dockSrc, popoverSrc, consoleSrc, sigilSrc, modalSrc, viewSrc, i18nSrc, responsiveCss] = await Promise.all([
+const [dockSrc, popoverSrc, consoleSrc, sigilSrc, modalSrc, viewSrc, i18nSrc, responsiveCss, menuSrc, seedSrc] = await Promise.all([
   assistant('ChatDock.jsx'), assistant('ChatResponsePopover.jsx'), assistant('VoiceConsole.jsx'), assistant('CompanionSigil.jsx'),
   read('public', 'pages', 'shared', 'navrya', 'components', 'feedback', 'Modal.jsx'),
   read('navrya-src', 'chatDockView.jsx'), read('public', 'pages', 'shared', 'ai-i18n.js'),
-  read('public', 'pages', 'shared', 'navrya', 'responsive.css')
+  read('public', 'pages', 'shared', 'navrya', 'responsive.css'),
+  assistant('DockMenu.jsx'), assistant('DockSeed.jsx')
 ]);
 
 // Absence checks look at code only - the files' own history comments name what was removed.
@@ -86,7 +87,7 @@ test('a short dialog still gets a usable lane (minimum height), anchored to the 
 });
 
 test('sameLane() compares by value so ChatDock only re-renders when the lane really moved', () => {
-  const a = { side: 'left', width: 376, bottom: 120, height: 600 };
+  const a = { side: 'left', width: SIDECAR_WIDTH_PX, bottom: 120, height: 600 };
   assert.equal(sameLane(a, { ...a }), true);
   assert.equal(sameLane(a, { ...a, bottom: 121 }), false);
   assert.equal(sameLane(null, null), true);
@@ -119,68 +120,109 @@ test('receipts: a form field uses its real interview label; no label shows the v
   assert.deepEqual(workflowReceipts(null, opts), []);
 });
 
+test('the design\'s geometry: the sidecar is 380 wide, the reserve is ONE constant, the weld needs room under the dialog, a long form is one the reserve already cuts', () => {
+  assert.equal(SIDECAR_WIDTH_PX, 380);
+  assert.equal(DOCK_RESERVED_PX, 24 + 68 + 2 + 130, 'margin + composer + joint + room for a short reply');
+  assert.equal(isLongForm({ height: 900 - 48 - DOCK_RESERVED_PX }, 900), true, 'a dialog the reserve already caps is long');
+  assert.equal(isLongForm({ height: 500 }, 900), false);
+  const dialog = { left: 300, right: 1100, top: 100, bottom: 560, width: 800, height: 460 };
+  assert.deepEqual(computeWeld({ viewportHeight: 900, dialogRect: dialog }), { left: 300, top: 560, width: 800 }, 'the bar takes the dialog\'s own left edge, width and bottom edge');
+  assert.equal(computeWeld({ viewportHeight: 900, dialogRect: { ...dialog, bottom: 900 - WELD_MIN_ROOM_PX + 1 } }), null, 'no room under the dialog: the bar falls back to the bottom band');
+  assert.equal(computeWeld({ viewportHeight: 900, dialogRect: null }), null);
+  assert.equal(computeWeld({ viewportWidth: 720, viewportHeight: 900, dialogRect: dialog }), null, 'a phone gets the plain bottom bar, never a weld');
+  assert.deepEqual(computeWeld({ viewportWidth: 1280, viewportHeight: 900, dialogRect: dialog }), { left: 300, top: 560, width: 800 });
+  assert.equal(sameWeld({ left: 1, top: 2, width: 3 }, { left: 1, top: 2, width: 3 }), true);
+  assert.equal(sameWeld({ left: 1, top: 2, width: 3 }, null), false);
+});
+
+test('the pinned lane is a column in the bottom inline-end corner; the anchor is the free corner of the page beside a scenario card', () => {
+  assert.deepEqual(computePinnedLane({ viewportHeight: 900, dir: 'rtl' }), { side: 'left', width: 380, bottom: 24, height: 860 });
+  assert.equal(computePinnedLane({ viewportHeight: 0, dir: 'rtl' }), null);
+  const chart = { left: 432, right: 1344, top: 16, bottom: 564, width: 912, height: 548 };
+  assert.deepEqual(computeAnchor({ dir: 'rtl', viewportWidth: 1440, viewportHeight: 900, anchorRect: chart }), { left: 456, top: 60, width: 520 }, 'plate XVI: 24px in from the inline-end edge, 44px below the top');
+  const ltr = computeAnchor({ dir: 'ltr', viewportWidth: 1440, viewportHeight: 900, anchorRect: chart });
+  assert.equal(ltr.left + ltr.width, chart.right - 24, 'mirrored for LTR');
+  assert.equal(computeAnchor({ dir: 'rtl', viewportWidth: 1440, viewportHeight: 900, anchorRect: { ...chart, width: 380, right: 812 } }), null, 'too narrow');
+  assert.equal(computeAnchor({ dir: 'rtl', viewportWidth: 1440, viewportHeight: 900, anchorRect: null }), null);
+  assert.equal(sameAnchor({ left: 1, top: 2, width: 3 }, { left: 1, top: 2, width: 3 }), true);
+});
+
+test('receipts: a navigation reads as what happened when the caller supplies the sentence, and only then', () => {
+  assert.equal(receiptEntry('navigate-to', 'domainId', 'dashboard', { ...opts, wentTo: (page) => 'به ' + page + ' رفتم' }), 'به داشبورد رفتم');
+  assert.equal(receiptEntry('navigate-to', 'domainId', 'unknown-page', { ...opts, wentTo: (page) => 'به ' + page + ' رفتم' }), 'unknown-page', 'no page label: the value alone, never a sentence about nothing');
+  assert.equal(receiptEntry('navigate-to', 'domainId', 'dashboard', opts), 'داشبورد');
+});
+
 test('chatDockView.jsx builds the popover meta from receipts and passes the character as the companion', () => {
   assert.match(viewSrc, /meta: workflowReceipts\(result\.workflow, receipts\)/);
   assert.doesNotMatch(code(viewSrc), /Object\.keys\(result\.workflow\.known \|\| \{\}\)\.map\(\(path\) => `\$\{path\}: /);
   assert.match(viewSrc, /const companion = companionFor\(i18n, navryaCharacter\);/);
   assert.match(viewSrc, /stringsFor\(languageOf\(i18n\)\)\.charTitle/);
   assert.match(viewSrc, /assetUrl\('assets\/portraits\/portrait-' \+ navryaCharacter \+ '\.webp'\)/);
-  assert.match(viewSrc, /companion=\{companion\} surfaceJoined=\{historyOpen \|\| !!\(popover && popover\.open\)\}/);
-  assert.match(viewSrc, /companion=\{companion\} joined statusLabel=\{i18n\.t\('aiDockStatusReady'\)\}/);
+  assert.match(viewSrc, /companion=\{companion\} surfaceJoined=\{historyOpen \|\| showReply\}/);
+  assert.match(viewSrc, /companion=\{companion\} joined statusLabel=\{statusText\}/);
+  assert.match(viewSrc, /wentTo: \(page\) => i18n\.t\('aiDockReceiptWentTo', \{ page \}\)/);
 });
 
-test('the reply header is the companion (portrait + name + engine label); the technical labels and the stage rail are gone', () => {
+test('the reply header is the companion (portrait, name, the engine chip that opens the engine menu, a page-aware status) with history / pin / collapse / close', () => {
   assert.doesNotMatch(code(popoverSrc), /' · CHAT'/);
   assert.doesNotMatch(code(popoverSrc), /RULE ENGINE/);
   assert.doesNotMatch(code(popoverSrc), /STAGE_META|HeightStageRail|'FOLDED'/);
   assert.doesNotMatch(code(popoverSrc), /StatCell/);
   const header = popoverSrc.slice(popoverSrc.indexOf('<header'), popoverSrc.indexOf('</header>'));
   assert.match(header, /<CompanionSigil portrait=\{portrait\} size=\{36\} state=\{thinking \? 'thinking' : 'idle'\} \/>/);
-  assert.match(header, /<EngineChip model=\{model\}/);
-  assert.match(header, /toggleFold/, 'fold (collapse to the header) is kept');
-  assert.match(popoverSrc, /const THREAD_MAX_HEIGHT = 'min\(44vh, 520px\)';/);
-  assert.match(popoverSrc, /<ReceiptChip key=\{i\} label=\{cell\.label\} value=\{cell\.value\} \/>/);
+  assert.match(header, /<DockMenu variant="chip" placement="down"/, 'the engine chip is the design\'s button: it opens the engine menu');
+  assert.match(header, /<EngineChip model=\{model\}/, 'and stays a plain label where no menu is supplied');
+  for (const control of ["icon=\"history\"", 'icon={pinIcon}', 'icon="chevron-down" label={sizeLabels.fold}', 'icon="x" label={sizeLabels.close}']) {
+    assert.ok(header.includes(control), control + ' is in the header');
+  }
+  assert.match(popoverSrc, /const THREAD_MAX_HEIGHT = 'calc\(60vh - 150px\)';/, 'the whole card stays under 60% of the viewport');
+  assert.match(popoverSrc, /<ReceiptChip key=\{k\} label=\{cell\.label\} value=\{cell\.value\} undo=\{k === receipts\.length - 1 \? undo : null\} \/>/);
 });
 
-test('`joined` squares the reply\'s bottom and the row\'s top so the two stacked elements read as one capsule', () => {
-  assert.match(popoverSrc, /borderRadius: joined \? `\$\{radius\}px \$\{radius\}px 0 0` : radius,/);
-  assert.match(popoverSrc, /borderBottom: joined \? 0 : undefined,/);
-  assert.match(dockSrc, /const rowRadius = surfaceJoined \? `0 0 \$\{CAPSULE_RADIUS_PX\}px \$\{CAPSULE_RADIUS_PX\}px` : CAPSULE_RADIUS_PX;/);
-  assert.match(dockSrc, /borderTop: surfaceJoined \? '1px solid var\(--border-hairline\)' : undefined,/);
-  assert.match(dockSrc, /companion=\{companion\} joinedTop=\{surfaceJoined\}/, 'the Voice console joins the same way');
-  assert.match(consoleSrc, /borderRadius: joinedTop \? '0 0 20px 20px' : 20,/);
+test('the reply and the composer are one card: the reply loses its bottom edge, the row its top edge and the joint is an inset hairline', () => {
+  assert.match(popoverSrc, /borderRadius: cardRadius\(false, joined\), border: '1px solid ' \+ EDGE, borderBottom: joined \? 0 : undefined,/);
+  assert.match(dockSrc, /borderRadius: cardRadius\(surfaceJoined, false\),/);
+  assert.match(dockSrc, /borderTop: surfaceJoined \? 0 : undefined,/);
+  assert.match(dockSrc, /const joint = surfaceJoined \? \(\s*\n\s*<span aria-hidden="true" style=\{\{ position: 'absolute', top: 0, insetInlineStart: 14, insetInlineEnd: 14, height: 1, background: DIVIDER/);
+  assert.match(dockSrc, /companion=\{companion\} joinedTop=\{surfaceJoined && !welded && !anchored\}/, 'the voice console joins the same way, except when it is welded or anchored');
+  assert.match(consoleSrc, /borderRadius: cardRadius\(joinedTop, false\)/);
 });
 
-test('the dock row opens with the character\'s portrait, not the engine mascot, and shows one Voice button unless there is typed text', () => {
+test('the dock row opens with the character\'s portrait - the open-conversation button - and shows one Voice button unless there is typed text', () => {
   assert.doesNotMatch(code(dockSrc), /ModelMascot/);
+  assert.match(dockSrc, /<CompanionSigil portrait=\{companion && companion\.portrait\} size=\{40\} state=\{sigilState\} \/>/);
   assert.match(dockSrc, /<CompanionSigil className="navrya-dock-mascot" portrait=\{companion && companion\.portrait\} size=\{40\} state=\{sigilState\} \/>/);
+  assert.match(dockSrc, /if \(replyAvailable\) emit\('expand'\); else if \(onHistory\) onHistory\(\);/);
   assert.match(dockSrc, /\{onVoiceToggle && showSend && \(\s*\n\s*<DockButton className="navrya-dock-mic"/);
   assert.match(sigilSrc, /export function CompanionSigil/);
   assert.doesNotMatch(code(sigilSrc), /onClick/, 'the sigil is decorative - never a decoy control');
 });
 
-test('voice is a state of the same capsule: one status line and one compact row, with no identity header of its own, no engine logo, no decorative non-buttons', () => {
+test('voice is a state of the same capsule: no identity header of its own in the console, no engine logo, no decorative non-buttons', () => {
   const c = code(consoleSrc);
   assert.doesNotMatch(c, /· VOICE|PHASE_CODE|'MIC DENIED'/);
   assert.doesNotMatch(c, /navrya-voice-console-volume|navrya-voice-console-speed|'volume-2'|>1×</);
-  assert.doesNotMatch(c, /ModelGlyph|EngineChip/, 'the joined reply header is the one identity header; the thinking state never shows the engine logo');
-  assert.match(consoleSrc, /<CompanionSigil className="navrya-voice-console-sigil" portrait=\{companion && companion\.portrait\} size=\{40\}/);
-  assert.match(consoleSrc, /<VoiceMeter voiceState=\{voiceState\} muted=\{voiceMuted\} getVoiceMediaStream=\{getVoiceMediaStream\} count=\{34\} height=\{30\}/);
-  const controls = consoleSrc.slice(consoleSrc.indexOf('className="navrya-voice-console-controls"'), consoleSrc.indexOf('export function VoiceMiniBar'));
-  for (const piece of ['navrya-voice-console-mute', 'navrya-voice-console-captions', 'navrya-voice-console-type', 'navrya-voice-console-main-action', 'navrya-voice-console-end']) {
-    assert.ok(controls.includes(piece), piece + ' sits in the one control row');
+  assert.doesNotMatch(c, /ModelGlyph/, 'the engine logo is never drawn by the console - only the chip the dock hands it');
+  assert.match(consoleSrc, /<CompanionSigil className="navrya-voice-console-sigil" portrait=\{companion && companion\.portrait\} size=\{40\} state=\{sigilState\} dot=\{false\} \/>/);
+  const consoleVariant = consoleSrc.slice(consoleSrc.indexOf('// ---- CONSOLE'), consoleSrc.indexOf('export function VoiceMiniBar'));
+  for (const piece of ['muteButton', 'captionsButton', 'typeButton', 'mainAction', 'endButton']) {
+    assert.ok(consoleVariant.includes('{' + piece + '}'), piece + ' sits in the one control row');
   }
-  assert.match(consoleSrc, /data-navrya-assistant="voice-mini"\s*\n\s*style=\{\{ \.\.\.capsuleFrame\(joinedTop\)/, 'the minimized row is the same capsule shape, joined like the console');
+  assert.match(consoleSrc, /data-navrya-assistant="voice-mini"\s*\n\s*style=\{\{ \.\.\.frameFor\('card', joinedTop\)/, 'the minimized row is the same capsule shape, joined like the console');
 });
 
-test('placement: no dialog = bottom; a lane that clears the dialog = side; otherwise under - the reserve is published before measuring and a dialog that ignored it is never retried', () => {
+test('placement: no dialog = bottom (or pinned); a conversation open beside a dialog = side; otherwise under; a voice session welds - and the reserve is published before measuring', () => {
   assert.match(dockSrc, /document\.querySelectorAll\('\[role="dialog"\]\[aria-modal="true"\]'\)/);
   const effect = dockSrc.slice(dockSrc.indexOf('const [dockMode, setDockMode]'), dockSrc.indexOf('const inLane = dockMode'));
   assert.ok(effect.indexOf('publishSide(true);') > -1 && effect.indexOf('publishSide(true);') < effect.indexOf('computeSideLane('), 'the reserve is published before the dialog is measured');
-  assert.match(effect, /if \(!dialog\) \{ setHost\(null\); publishSide\(false\); commit\('free', null\); return; \}/);
-  assert.match(effect, /if \(lane\) \{ commit\('side', lane\); return; \}/);
-  assert.match(effect, /if \(refused\) refused\.add\(dialog\);\s*\n\s*\}\s*\n\s*publishSide\(false\);\s*\n\s*setHost\(host, 'under'\);\s*\n\s*commit\('under', null\);/);
-  assert.match(effect, /new MutationObserver\(schedule\)/);
+  assert.match(effect, /if \(input\.pinned && isLaneViewport\(vw\)\) commit\('side', computePinnedLane\(\{ viewportHeight: vh, dir \}\), null\);\s*\n\s*else commit\('free', null, null\);/);
+  assert.match(effect, /if \(lane\) \{ commit\('side', lane, null\); return; \}/);
+  assert.match(effect, /if \(refused\) refused\.add\(dialog\);\s*\n\s*\}\s*\n\s*publishSide\(false\);\s*\n\s*setHost\(host, 'under'\);\s*\n\s*commit\('under', null, null\);/);
+  assert.match(effect, /const wantsSide = input\.pinned \|\| input\.scrollOpen;/, 'typed chat only takes a lane when the conversation is open (or pinned) - otherwise the dialog is left alone');
+  assert.match(effect, /if \(attach\) \{ setWeldMark\(dialog\); commit\('weld', null, attach\); return; \}/);
+  assert.match(effect, /choice = isLongForm\(\{ height: dialog\.offsetHeight \}, vh\) && isLaneViewport\(vw\) \? 'side' : 'weld';/, 'a voice session on a form too long to leave room under it takes the sidecar - decided once per dialog');
+  assert.match(effect, /new MutationObserver\(onMutation\)/, 'a dialog mounting is seen before the browser paints it');
   assert.match(effect, /new ResizeObserver\(schedule\)/);
   assert.match(effect, /setSideLane\(\(prev\) => \(sameLane\(prev, lane\) \? prev : lane\)\);/);
   assert.match(effect, /root\.style\.removeProperty\('--navrya-chat-dock-side-left'\);/);
@@ -201,15 +243,19 @@ test('every dialog backdrop - Modal.jsx and the hand-rolled ones - is tagged, so
   assert.match(responsiveCss, /\[data-navrya-dock-host\] \[role="dialog"\]\[aria-modal="true"\] \{ max-height: calc\(100vh - 48px - var\(--navrya-chat-dock-reserved, 0px\)\) !important; \}/);
 });
 
-test('the bottom reserve follows the layout: 0 in the lane (the dialog gets its full height back), row + peek band under a dialog, unchanged otherwise', () => {
-  assert.match(dockSrc, /var reserved = dockMode === 'side'\s*\n\s*\? 0\s*\n\s*: dockMode === 'under'\s*\n\s*\? DOCK_BOTTOM_PX \+ rowHeight \+ JOINED_GAP_PX \+ UNDER_DIALOG_ALLOWANCE_PX\s*\n\s*: 24 \+ rowHeight \+ PANEL_TO_DOCK_GAP_PX \+ POPOVER_SHORT_REPLY_ALLOWANCE_PX;/);
-  assert.match(dockSrc, /\}, \[rowHeight, dockMode\]\);/);
-  assert.match(dockSrc, /: underDialog \? \{ maxHeight: UNDER_DIALOG_ALLOWANCE_PX, overflowY: 'auto' \} : null;/, 'under a dialog the reply never grows past the reserved band');
+test('a dialog is never moved by the dock: ONE constant reserve, a padding glide instead of a jump, and the weld squares the dialog\'s bottom edge', () => {
+  assert.match(dockSrc, /var reserved = inLane \|\| seed \? 0 : DOCK_RESERVED_PX;/, 'the reserve does not depend on the row height, the placement (except the side lane) or the voice console');
+  assert.match(dockSrc, /\}, \[inLane, seed\]\);/);
+  assert.doesNotMatch(code(dockSrc), /rowHeight \+ PANEL_TO_DOCK_GAP_PX \+ POPOVER_SHORT_REPLY_ALLOWANCE_PX/, 'the old row-height-dependent reserve is gone');
+  assert.match(dockSrc, /: underDialog \? \{ maxHeight: DOCK_RESERVED_PX - DOCK_BOTTOM_PX - CAPSULE_ROW_PX, overflowY: 'auto' \} : null;/, 'under a dialog the reply never grows past the reserved band');
+  assert.match(modalSrc, /transition: 'padding 220ms var\(--ease-out\)'/);
+  assert.match(responsiveCss, /\[data-navrya-dock-host\] \{ transition: padding 220ms var\(--ease-out/);
+  assert.match(responsiveCss, /\[data-navrya-dock-weld="true"\] \{\s*\n\s*border-bottom-left-radius: 0 !important;\s*\n\s*border-bottom-right-radius: 0 !important;\s*\n\s*border-bottom-width: 0 !important;/);
 });
 
-test('under a dialog the reply is the design\'s peek - except the safety card and the screenshot review, which always keep the full panel', () => {
+test('under a dialog (and as the fresh reply) the reply is the design\'s peek - except the safety card and the screenshot review, which always keep the full card', () => {
   assert.match(popoverSrc, /const dockLayout = React\.useContext\(DockLayoutContext\);/);
-  assert.match(popoverSrc, /if \(dockLayout === 'under' && !safety && !review\) \{/);
+  assert.match(popoverSrc, /if \(\(shape === 'peek' \|\| dockLayout === 'under'\) && !safety && !review\) \{/);
   assert.match(popoverSrc, /data-navrya-response-variant="peek"/);
 });
 
@@ -220,10 +266,12 @@ test('the composer is the design\'s: portrait, input, a "+" tools menu that keep
   assert.match(tools, /onNewChat && \{ key: 'new'/);
   assert.match(tools, /onHistory && \{ key: 'history'/);
   assert.match(tools, /onToggleTherapist && \{ key: 'therapist'/);
+  assert.match(tools, /onFormConfirmToggle && formConfirmLabel && \{ key: 'form-confirm'/, 'ask-every-field is a real, persisted toggle');
+  assert.match(tools, /onAutoCollapseChange && autoCollapseLabel && \{ key: 'auto-collapse'/);
   assert.match(dockSrc, /const engineItems = list && onModelChange\s*\n\s*\? list\.map\(\(m\) => \(\{ key: m\.id, role: 'menuitemradio'/);
   assert.match(dockSrc, /onSelect: \(\) => onModelChange\(m\.id\)/);
-  assert.match(dockSrc, /aria-haspopup="menu" aria-expanded=\{open \? 'true' : 'false'\}/);
-  assert.match(dockSrc, /if \(e\.key === 'Escape'\) setOpen\(false\);/);
+  assert.match(menuSrc, /aria-haspopup="menu" aria-expanded=\{open \? 'true' : 'false'\}/);
+  assert.match(menuSrc, /if \(e\.key === 'Escape'\) setOpen\(false\);/);
   assert.match(viewSrc, /toolsLabel=\{i18n\.t\('aiDockTools'\)\}/);
 });
 
@@ -240,20 +288,24 @@ test('Modal.jsx reserves the side lane with safe 0px defaults, next to the exist
   assert.match(modalSrc, /padding: '24px calc\(24px \+ var\(--navrya-chat-dock-side-right, 0px\)\) calc\(24px \+ var\(--navrya-chat-dock-reserved, 0px\)\) calc\(24px \+ var\(--navrya-chat-dock-side-left, 0px\)\)'/);
 });
 
-test('in the side lane the voice row wraps: the waveform on its own line, the controls below it', () => {
-  assert.match(responsiveCss, /\[data-navrya-dock-layout="side"\] \.navrya-voice-console-controls \{ flex-wrap: wrap !important;/);
-  assert.match(responsiveCss, /\[data-navrya-dock-layout="side"\] \.navrya-voice-console-meter \{ flex: 1 1 100% !important; order: -1;/);
+test('the sidecar is a column of its own (header, checklist, last said, one control row) - no wrapping row hack in the lane any more', () => {
+  assert.doesNotMatch(responsiveCss, /\[data-navrya-dock-layout="side"\] \.navrya-voice-console-controls/);
+  const sidecar = consoleSrc.slice(consoleSrc.indexOf('// ---- SIDECAR'), consoleSrc.indexOf('// ---- ANCHOR'));
+  assert.match(sidecar, /height: laneHeight \|\| undefined/);
+  for (const piece of ['fv.modeChips', 'fields.map', 'fv.said.map', 'navrya-voice-console-controls']) assert.ok(sidecar.includes(piece), piece);
 });
 
 test('the new strings exist in all four languages', () => {
-  assert.equal((i18nSrc.match(/aiDockStatusReady: '/g) || []).length, 4);
-  assert.equal((i18nSrc.match(/aiChatFeedbackWrong: '/g) || []).length, 4);
-  assert.equal((i18nSrc.match(/aiDockTools: '/g) || []).length, 4);
+  for (const key of ['aiDockStatusReady', 'aiChatFeedbackWrong', 'aiDockTools', 'aiDockPlaceholderNamed', 'aiDockMessageTo', 'aiDockSeedOpen', 'aiDockReplyReady', 'aiDockJustNow', 'aiDockClosePeek', 'aiDockPin', 'aiDockUnpin', 'aiDockPreviousChats', 'aiDockStatusOn', 'aiDockSwitchEngine', 'aiDockUndo', 'aiDockReceiptWentTo', 'aiDockAutoCollapse', 'aiDockVoiceTag', 'aiDockSecondsShort', 'aiDockOpenConversation']) {
+    assert.equal((i18nSrc.match(new RegExp(key + ": '", 'g')) || []).length, 4, key);
+  }
 });
 
-test('history is the capsule\'s own joined panel, full width, with a delete per conversation behind an inline confirmation', () => {
-  const panel = viewSrc.slice(viewSrc.indexOf('export function ConversationHistoryDropdown('), viewSrc.indexOf('function ChatDockApp('));
-  assert.match(panel, /borderRadius: '20px 20px 0 0', border: '1px solid var\(--border-gold-strong\)', borderBottom: 0,/);
+test('history is the capsule\'s own joined panel, full width, in the design\'s card - with a delete per conversation behind an inline confirmation', () => {
+  const panel = viewSrc.slice(viewSrc.indexOf('export function ConversationHistoryDropdown('), viewSrc.indexOf('function useFormVoiceModel('));
+  assert.match(panel, /borderRadius: '20px 20px 0 0', border: '1px solid ' \+ EDGE, borderBottom: 0,/);
+  assert.match(panel, /background: cardBackground\('card'\),/);
+  assert.match(panel, /<CapsuleTop \/>/);
   assert.doesNotMatch(panel, /maxWidth: 360/, 'no longer a small separate dropdown');
   assert.match(panel, /iconButton\('trash-2', i18n\.t\('aiDockHistoryDelete'\), \(\) => \{ setFailedId\(null\); setConfirmId\(conversation\.id\); \}, 'danger'\)/);
   assert.match(panel, /onClick=\{\(\) => confirmDelete\(conversation\.id\)\}/, 'deleting only ever happens from the confirmation');
@@ -262,16 +314,28 @@ test('history is the capsule\'s own joined panel, full width, with a delete per 
   assert.match(viewSrc, /setHistoryList\(\(list\) => list\.filter\(\(conversation\) => conversation\.id !== id\)\);/);
   assert.match(viewSrc, /if \(activeConversationIdRef\.current === id\) \{\s*\n\s*startNewChat\(\);\s*\n\s*setHistoryOpen\(true\);/);
   assert.match(viewSrc, /onNewChat=\{startNewChat\} onDelete=\{deleteConversation\}/);
-  assert.match(viewSrc, /\{popover && !historyOpen && \(/, 'while history is open it is the panel on the row');
-  assert.match(viewSrc, /surfaceJoined=\{historyOpen \|\| !!\(popover && popover\.open\)\}/);
+  assert.match(viewSrc, /\{showReply && \(/, 'while history is open it is the panel on the row (showReply is false then)');
+  assert.match(viewSrc, /const showReply = replyVisible && !historyOpen && \(effectiveShape === 'peek' \|\| effectiveShape === 'scroll'\);/);
 });
 
-test('every capsule surface has the strong gold edge and a lit top line, so its top edge reads clearly on the dark page', () => {
-  assert.match(dockSrc, /border: '1px solid var\(--border-gold-strong\)',/);
-  assert.match(dockSrc, /0 0 40px var\(--char-glow\),inset 0 1px 0 rgba\(244,234,215,\.12\)/);
-  assert.equal((popoverSrc.match(/border: '1px solid var\(--border-gold-strong\)', borderBottom: joined \? 0 : undefined,/g) || []).length, 2);
-  assert.match(consoleSrc, /border: '1px solid var\(--border-gold-strong\)',/);
-  assert.doesNotMatch(code(popoverSrc) + code(consoleSrc), /border: '1px solid var\(--border-gold\)', borderBottom/);
+test('every capsule surface wears the design\'s card: the .45 gold edge, the accent gradient over the stage colour, the grabber and the corner ticks', () => {
+  assert.match(dockSrc, /border: '1px solid ' \+ EDGE,/);
+  assert.match(dockSrc, /background: surfaceJoined \? INK_DEEP : cardBackground\('card'\),/);
+  assert.match(popoverSrc, /background: cardBackground\('card'\),/);
+  assert.match(consoleSrc, /background: joinedTop \? '#0A0D12' : cardBackground\('card'\),/);
+  assert.match(consoleSrc, /background: cardBackground\('weld'\), boxShadow: cardShadow\('weld'\)/);
+  assert.equal((dockSrc.match(/<CapsuleTop \/>/g) || []).length, 1);
+  assert.doesNotMatch(code(dockSrc) + code(popoverSrc) + code(consoleSrc), /border-gold-strong/, 'the old .9 edge is gone');
+});
+
+test('the seed is a 64px portrait with a badge, or the 56px variant with the "reply ready" pill - and both open the dock', () => {
+  assert.match(seedSrc, /const size = count > 0 && pillLabel \? 56 : 64;/);
+  assert.match(seedSrc, /border: '2px solid var\(--char-accent\)'/);
+  assert.match(seedSrc, /background: 'var\(--char-accent\)', color: 'var\(--char-on-accent\)'/);
+  assert.match(seedSrc, /onClick=\{onOpen\}/);
+  assert.match(dockSrc, /if \(seed\) \{\s*\n\s*return \(\s*\n\s*<DockLayoutContext\.Provider value="bottom">\s*\n\s*<DockSeed/);
+  assert.match(dockSrc, /\(e\.ctrlKey \|\| e\.metaKey\) && !e\.altKey && !e\.shiftKey && \(e\.key === 'k' \|\| e\.key === 'K'\)/);
+  assert.match(dockSrc, /if \(e\.key === 'ArrowUp' && replyAvailable && shape !== 'scroll'\) \{ e\.preventDefault\(\); emit\('expand'\); \}/);
 });
 
 test('the history strings exist in all four languages', () => {

@@ -13,11 +13,11 @@ export function DockButton({ icon, label, tone = 'ghost', active = false, disabl
     transform: hover && !disabled ? 'translateY(-1px)' : 'translateY(0)'
   };
   const skin = primary
+    // The design's primary (plate III): the accent fill and edge, the character's dark on-accent ink, no glow.
     ? {
-      border: '1px solid transparent',
+      border: '1px solid ' + (disabled ? 'transparent' : 'var(--char-accent)'),
       background: disabled ? 'rgba(244,234,215,.06)' : 'var(--char-accent)',
-      color: disabled ? 'var(--text-muted)' : 'var(--ink-950)',
-      boxShadow: disabled ? 'none' : 'var(--glow-active)'
+      color: disabled ? 'var(--text-muted)' : 'var(--char-on-accent)'
     }
     // Voice ERROR state (aiVoiceRealtime.js's VOICE_STATES.ERROR, see ChatDock.jsx's own Voice
     // button): the one ghost-tone case that must never be mistaken for a normal "active" toggle -
@@ -40,7 +40,7 @@ export function DockButton({ icon, label, tone = 'ghost', active = false, disabl
       onMouseEnter={() => setHover(true)} onMouseLeave={() => setHover(false)}
       style={{ ...base, ...skin }}
     >
-      <Icon name={icon} size={18} />
+      <Icon name={icon} size={primary && size >= 44 ? 19 : 18} />
     </button>
   );
 }

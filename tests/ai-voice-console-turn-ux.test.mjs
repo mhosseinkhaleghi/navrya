@@ -15,6 +15,7 @@ const voiceConsoleSrc = await readFile(path.join(root, 'public', 'pages', 'share
 const chatDockSrc = await readFile(path.join(root, 'public', 'pages', 'shared', 'navrya', 'components', 'assistant', 'ChatDock.jsx'), 'utf8');
 const responsePopoverSrc = await readFile(path.join(root, 'public', 'pages', 'shared', 'navrya', 'components', 'assistant', 'ChatResponsePopover.jsx'), 'utf8');
 const dockViewSrc = await readFile(path.join(root, 'navrya-src', 'chatDockView.jsx'), 'utf8');
+const laneSrc = await readFile(path.join(root, 'public', 'pages', 'shared', 'navrya', 'components', 'assistant', 'dockSideLane.js'), 'utf8');
 const realtimeSrc = await readFile(path.join(root, 'navrya-src', 'aiVoiceRealtime.js'), 'utf8');
 const geminiSrc = await readFile(path.join(root, 'navrya-src', 'geminiLiveVoice.js'), 'utf8');
 const gptLiveSrc = await readFile(path.join(root, 'navrya-src', 'gptLiveVoice.js'), 'utf8');
@@ -31,7 +32,8 @@ test('the centre pill button is real/active in exactly two live phases - ASSISTA
   assert.match(voiceConsoleSrc, /const canManualFinish = userSpeaking && voiceSupportsManualFinish;/);
   assert.match(voiceConsoleSrc, /const mainActionable = replying \|\| canManualFinish;/);
   assert.match(voiceConsoleSrc, /const mainActionHandler = replying \? onVoiceInterrupt : canManualFinish \? onVoiceEndMessage : undefined;/);
-  assert.match(voiceConsoleSrc, /\{mainActionable && \(\s*\n\s*<button\s*\n\s*type="button" className="navrya-voice-console-main-action"/);
+  assert.match(voiceConsoleSrc, /const mainAction = mainActionable && \(/, 'the button only exists in the phases where it can act');
+  assert.match(voiceConsoleSrc, /type="button" className="navrya-voice-console-main-action" onClick=\{mainActionHandler\}/);
   assert.match(voiceConsoleSrc, /const statusLabel = thinking && voiceManualFinishPending \? strings\.endingMessage : phaseLabel;/, 'the "ending message" state still shows - in the status line');
 });
 
@@ -47,7 +49,7 @@ test('"End message" is wired to a distinct callback (onVoiceEndMessage) from "St
 test('the button label/aria-label/icon all switch together for every mode (icon AND text AND handler in lockstep - no decoy control, matching this codebase\'s own "no decoy buttons" rule)', () => {
   assert.match(voiceConsoleSrc, /const mainActionLabel = replying \? strings\.stopReply : canManualFinish \? strings\.endMessage : \(thinking && voiceManualFinishPending \? strings\.endingMessage : phaseLabel\);/);
   assert.match(voiceConsoleSrc, /const mainActionIcon = replying \? 'square' : canManualFinish \? 'send' : 'check';/);
-  assert.match(voiceConsoleSrc, /onClick=\{mainActionable \? mainActionHandler : undefined\} aria-label=\{mainActionLabel\} disabled=\{!mainActionable\}/);
+  assert.match(voiceConsoleSrc, /onClick=\{mainActionHandler\} aria-label=\{mainActionLabel\} title=\{mainActionLabel\}/, 'handler, name and tooltip all come from the same mode (and the button is not rendered at all when there is no action)');
 });
 
 test('the PROCESSING label distinguishes a manual "End message" click from an ordinary VAD-driven turn reaching PROCESSING the normal way, without any change to the button\'s disabled-processing rendering itself', () => {
@@ -146,7 +148,7 @@ test('chatDockView.jsx wires the two new callbacks straight into the existing vo
 test('the response/companion/history surface is positioned from the REAL, measured dock-row rect (getBoundingClientRect), not an independently-recomputed centering that assumed a fixed 66px mascot allowance', () => {
   assert.match(chatDockSrc, /const \[dockSurfaceRect, setDockSurfaceRect\] = React\.useState\(null\);/);
   assert.match(chatDockSrc, /const rect = el\.getBoundingClientRect\(\);/);
-  assert.match(chatDockSrc, /setDockSurfaceRect\(\{ left: rect\.left, width: rect\.width \}\);/);
+  assert.match(chatDockSrc, /prev && prev\.left === rect\.left && prev\.width === rect\.width \? prev : \{ left: rect\.left, width: rect\.width \}/, 'only re-renders when the row really moved');
   assert.match(chatDockSrc, /\?\s*\{ left: dockSurfaceRect\.left, width: dockSurfaceRect\.width \}/, 'once measured, the surface must be pinned to the REAL row rect, not a recomputed maxWidth/margin centering');
 });
 
@@ -171,7 +173,7 @@ test('z-index separation is preserved exactly as before - the response surface s
   assert.match(chatDockSrc, /zIndex: dockLayout === 'bottom' \? 70 : 150, pointerEvents: 'none'/);
   assert.match(chatDockSrc, /\.\.\.dockPlacement, zIndex: 150,/);
   assert.match(chatDockSrc, /const inLane = dockMode === 'side' && !!sideLane;/);
-  assert.match(chatDockSrc, /const dockLayout = inLane \? 'side' : underDialog \? 'under' : 'bottom';/);
+  assert.match(chatDockSrc, /const dockLayout = inLane \? 'side' : welded \? 'weld' : anchored \? 'anchor' : underDialog \? 'under' : 'bottom';/);
 });
 
 // NAVRYA chat dock redesign: the gap was deliberately shrunk from the original 12px, first to a
@@ -186,16 +188,16 @@ test('z-index separation is preserved exactly as before - the response surface s
 // panel" goal. The 2px gap still applies to the unjoined surfaces (history dropdown, companion
 // card). The row still starts at bottom:24 (DOCK_BOTTOM_PX) outside the side lane.
 test('the response surface sits a small, deliberate PANEL_TO_DOCK_GAP_PX above the dock row (bottom: 24 + rowHeight + PANEL_TO_DOCK_GAP_PX, where the row itself starts at bottom:24), not the old 12px gap', () => {
-  assert.match(chatDockSrc, /var PANEL_TO_DOCK_GAP_PX = 2;/);
+  assert.match(laneSrc, /export var PANEL_TO_DOCK_GAP_PX = 2;/);
   assert.match(chatDockSrc, /var JOINED_GAP_PX = 0;/);
-  assert.match(chatDockSrc, /var DOCK_BOTTOM_PX = 24;/);
+  assert.match(laneSrc, /export var DOCK_BOTTOM_PX = 24;/);
   assert.match(chatDockSrc, /const surfaceGap = surfaceJoined \? JOINED_GAP_PX : PANEL_TO_DOCK_GAP_PX;/);
   assert.match(chatDockSrc, /const dockBottom = inLane \? sideLane\.bottom : DOCK_BOTTOM_PX;/);
   assert.match(chatDockSrc, /bottom: dockBottom \+ rowHeight \+ surfaceGap, boxSizing: 'border-box'/);
 });
 
 test('the response body is now its own bounded, scrollable region covering EVERY section (lines/meta/suggestions/review), not only the messages thread - a header stays outside this wrapper and therefore always reachable', () => {
-  assert.match(responsePopoverSrc, /maxHeight: '60vh', overflowY: 'auto', boxSizing: 'border-box' \}\}>/);
+  assert.match(responsePopoverSrc, /maxHeight: THREAD_MAX_HEIGHT, overflowY: 'auto', boxSizing: 'border-box', position: 'relative' \}\}>/);
   // The header (with its fold/close controls) is rendered as a sibling BEFORE this scrollable
   // wrapper in the JSX, i.e. outside it - never scrolled away with the body. Matched on the same
   // full literal pattern as the assertion above (not the bare "maxHeight: '60vh'" substring,
@@ -204,13 +206,13 @@ test('the response body is now its own bounded, scrollable region covering EVERY
   // <header, and would otherwise falsely resolve to that unrelated declaration instead of this
   // wrapper).
   const headerIdx = responsePopoverSrc.indexOf('<header');
-  const scrollWrapperIdx = responsePopoverSrc.indexOf("maxHeight: '60vh', overflowY: 'auto', boxSizing: 'border-box' }}>");
+  const scrollWrapperIdx = responsePopoverSrc.indexOf("maxHeight: THREAD_MAX_HEIGHT, overflowY: 'auto', boxSizing: 'border-box', position: 'relative' }}>");
   assert.ok(headerIdx > -1 && scrollWrapperIdx > headerIdx, 'the header must be declared before (outside) the scrollable body wrapper');
 });
 
 test('VoiceConsole\'s own meter/caption content area is bounded and scrollable for a short viewport, while the header and footer controls (mute/main action/captions toggle) stay outside that wrapper and therefore always reachable', () => {
   assert.match(voiceConsoleSrc, /maxHeight: '46vh', overflowY: 'auto', boxSizing: 'border-box' \}\}>/);
   const scrollWrapperIdx = voiceConsoleSrc.indexOf("maxHeight: '46vh'");
-  const footerControlsIdx = voiceConsoleSrc.indexOf("aria-label={voiceMuted ? strings.unmute : strings.mute}");
+  const footerControlsIdx = voiceConsoleSrc.indexOf('{muteButton}', scrollWrapperIdx);
   assert.ok(scrollWrapperIdx > -1 && footerControlsIdx > scrollWrapperIdx, 'the footer mute/main-action controls must be declared after (outside) the scrollable content wrapper');
 });

@@ -52,7 +52,7 @@ test('the plain text input only ever renders inside the idle row - a live voice 
 });
 
 test('the mute control lives in the voice console (only ever rendered while a real session is live, since VoiceConsole/VoiceMiniBar are only rendered while non-idle) and reads/flips the real voiceMuted state', () => {
-  assert.match(voiceConsoleSrc, /aria-label=\{voiceMuted \? strings\.unmute : strings\.mute\} onClick=\{onVoiceMuteToggle\}/);
+  assert.match(voiceConsoleSrc, /aria-label=\{voiceMuted \? strings\.unmute : strings\.mute\} title=\{voiceMuted \? strings\.unmute : strings\.mute\} onClick=\{onVoiceMuteToggle\}/);
   assert.match(voiceConsoleSrc, /name=\{voiceMuted \? 'mic-off' : 'mic'\}/);
 });
 

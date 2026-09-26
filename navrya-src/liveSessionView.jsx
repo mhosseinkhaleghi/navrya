@@ -2504,7 +2504,7 @@ function MarketChartView({ session, lang, onAddChart, onLogMove }) {
   if (!symbol) return <ChartUnmappedNotice lang={lang} />;
   const interval = tradingViewIntervalFor(session.timeframe);
   return (
-    <div ref={wrapRef} style={isFullscreen ? { height: '100vh', background: 'var(--ink-950)' } : undefined}>
+    <div ref={wrapRef} data-navrya-dock-anchor="chart" style={isFullscreen ? { height: '100vh', background: 'var(--ink-950)' } : undefined}>
       <Panel variant="base" ornament padding="16px" style={isFullscreen ? { borderRadius: 0, height: '100%' } : undefined}>
         <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>

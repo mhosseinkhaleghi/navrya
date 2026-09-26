@@ -1,6 +1,8 @@
 import React from 'react';
 import { Icon } from '../core/Icon.jsx';
 import { ActionRow, MiniButton } from './ChatResponsePopover.jsx';
+import { CapsuleTop } from './CapsuleTop.jsx';
+import { cardBackground, cardShadow, EDGE } from './dockDesign.js';
 
 // Journey G (AI Companion & Journey Orchestration). A compact card in the same glass-card visual
 // language ConversationHistoryDropdown/ChatResponsePopover already use (chatDockView.jsx) -
@@ -16,12 +18,14 @@ export function CompanionCard({ card, i18n, onContinue, onExplain, onLater, onSk
   // background/border/glow VoiceConsole.jsx already established) instead of the old translucent
   // frosted-glass card - both surfaces render into the same ChatDock `children` slot, so they must
   // read as one consistent family rather than two different visual styles.
+  // The design's card recipe (dockDesign.js) - the same edge, gradient and furniture as the reply and the
+  // composer, so the three read as one family.
   const wrapperStyle = {
-    width: '100%', maxWidth: 360, boxSizing: 'border-box',
-    borderRadius: 'var(--radius-14)', border: '1px solid var(--border-gold-strong)',
-    background: 'linear-gradient(180deg,rgba(17,27,28,.97),rgba(7,11,15,.985))',
-    boxShadow: 'var(--shadow-panel),var(--glow-soft)',
-    padding: 14
+    position: 'relative', width: '100%', maxWidth: 360, boxSizing: 'border-box',
+    borderRadius: 20, border: '1px solid ' + EDGE,
+    background: cardBackground('card'),
+    boxShadow: cardShadow('card'),
+    padding: '20px 14px 14px'
   };
   const titleStyle = { font: 'var(--type-body-strong)', color: 'var(--text-primary)', marginBottom: 4 };
   const whyStyle = { font: 'var(--type-caption)', color: 'var(--text-muted)', marginBottom: 10 };
@@ -48,7 +52,8 @@ export function CompanionCard({ card, i18n, onContinue, onExplain, onLater, onSk
 
   if (card.kind === 'welcome') {
     return (
-      <div style={wrapperStyle} data-companion-card="welcome">
+      <div style={wrapperStyle} data-companion-card="welcome" data-navrya-assistant="companion-card">
+        <CapsuleTop />
         <div style={{ display: 'flex', alignItems: 'flex-start', gap: 8 }}>
           <div style={{ flex: 1, minWidth: 0 }}>
             <div style={titleStyle}>{card.title}</div>
@@ -66,7 +71,8 @@ export function CompanionCard({ card, i18n, onContinue, onExplain, onLater, onSk
   }
 
   return (
-    <div style={wrapperStyle} data-companion-card={card.id}>
+    <div style={wrapperStyle} data-companion-card={card.id} data-navrya-assistant="companion-card">
+      <CapsuleTop />
       <div style={{ display: 'flex', alignItems: 'flex-start', gap: 8 }}>
         <div style={{ flex: 1, minWidth: 0 }}>
           <div style={{ font: 'var(--type-caption)', color: 'var(--text-dim)', marginBottom: 4, textTransform: 'uppercase', letterSpacing: '.04em' }}>{i18n.t('companionWhyLabel')}</div>

@@ -24,7 +24,10 @@ import { Icon } from '../core/Icon.jsx';
    an open dialog (dockSideLane.js) and publishes that lane as --navrya-chat-dock-side-left/-right
    (0 otherwise); reserving it here re-centres the dialog into the rest of the viewport so the
    dock never sits over the dialog. Physical left/right, not logical, because the dock decides the
-   side from its own `dir`. Both default to 0px, a no-op on pages without a ChatDock. */
+   side from its own `dir`. Both default to 0px, a no-op on pages without a ChatDock.
+
+   The bottom reserve is ONE constant (dockSideLane.js DOCK_RESERVED_PX), independent of the dock's
+   placement and of the voice console's height, so a dialog does not move when it opens. */
 export function Modal({
   open = true, title, icon, eyebrow, onClose, footer, width = 860, children, style, ...rest
 }) {
@@ -40,7 +43,10 @@ export function Modal({
       style={{
         position: 'fixed', inset: 0, zIndex: 100, display: 'grid', placeItems: 'center',
         padding: '24px calc(24px + var(--navrya-chat-dock-side-right, 0px)) calc(24px + var(--navrya-chat-dock-reserved, 0px)) calc(24px + var(--navrya-chat-dock-side-left, 0px))',
-        background: 'var(--scrim)', backdropFilter: 'blur(3px)'
+        background: 'var(--scrim)', backdropFilter: 'blur(3px)',
+        // The dock's reserve changes when a voice sidecar or the beside-the-dialog conversation opens: a
+        // glide, never a jump (a dialog that is merely opening is not animated - see responsive.css).
+        transition: 'padding 220ms var(--ease-out)'
       }}
       onMouseDown={(e) => { if (e.target === e.currentTarget && onClose) onClose(); }}
     >
