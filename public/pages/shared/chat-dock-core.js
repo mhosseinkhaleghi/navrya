@@ -1024,8 +1024,14 @@
       var interviewKnown = (currentWorkflow && currentWorkflow.processId === activeProcess.id) ? (currentWorkflow.known || {}) : {};
       var visibleFields = registry.visibleInterviewFields(activeProcess.id);
       var nextInterviewField = null;
+      // Form voice (docs/ai/form-interview-contract.md): a field the descriptor marks `ask: false` is shown
+      // in the form's progress but never interviewed, and one the user skipped ("skip this field") is not
+      // asked again - both only ever narrow WHICH field is next, never the order.
+      if (interviewSkips.processId && interviewSkips.processId !== activeProcess.id) interviewSkips = { processId: null, paths: [] };
       for (var ivf = 0; ivf < visibleFields.length; ivf++) {
         var candidateField = visibleFields[ivf];
+        if (candidateField.ask === false) continue;
+        if (interviewSkips.processId === activeProcess.id && interviewSkips.paths.indexOf(candidateField.path) > -1) continue;
         var knownValue = interviewKnown[candidateField.path];
         if (knownValue === undefined || knownValue === null || knownValue === '') { nextInterviewField = candidateField; break; }
       }
@@ -1706,7 +1712,22 @@
     var clarificationState = window.TradeJournalAIClarificationState;
     if (clarificationState && typeof clarificationState.clear === 'function') clarificationState.clear();
   }
+  // Form voice: the fields the user chose to skip for the one process being interviewed (see the
+  // nextQuestion loop in sendChat). Forgotten when another process becomes the active one or the
+  // conversation is reset.
+  var interviewSkips = { processId: null, paths: [] };
+  function skipInterviewField(processId, path) {
+    if (!processId || !path) return false;
+    if (interviewSkips.processId !== processId) interviewSkips = { processId: processId, paths: [] };
+    if (interviewSkips.paths.indexOf(path) === -1) interviewSkips.paths.push(path);
+    return true;
+  }
+  function skippedInterviewPaths(processId) {
+    return interviewSkips.processId === processId ? interviewSkips.paths.slice() : [];
+  }
+
   function resetConversationState() {
+    interviewSkips = { processId: null, paths: [] };
     var workflowEngine = window.TradeJournalAIWorkflowEngine;
     var proactiveEngine = window.TradeJournalAIProactiveEngine;
     if (workflowEngine && typeof workflowEngine.cancel === 'function') workflowEngine.cancel();
@@ -1768,6 +1789,8 @@
     applySuggestion: applySuggestion,
     resetConversationState: resetConversationState,
     clearPendingClarification: clearPendingClarification,
+    skipInterviewField: skipInterviewField,
+    skippedInterviewPaths: skippedInterviewPaths,
     analyzeScreenshot: analyzeScreenshot,
     applyExtractionToWizard: applyExtractionToWizard,
     debugLastTurn: debugLastTurn,

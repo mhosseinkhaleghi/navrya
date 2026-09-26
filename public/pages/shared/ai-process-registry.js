@@ -23,6 +23,15 @@
   // modal/wizard/editor's own registration effect makes for itself.
   var LAYER_RANK = { background: 0, foreground: 1 };
 
+  // Presentation-only signal that a process (re-)registered or had a value applied: the ChatDock's form
+  // voice bar and the field states on the real form re-read the registry on it (dockFormVoice.js). Carries
+  // nothing but the process id and is never a source of truth.
+  function announceChange(processId) {
+    try {
+      if (typeof window.dispatchEvent === 'function' && typeof CustomEvent === 'function') window.dispatchEvent(new CustomEvent('tradejournal:ai-process-changed', { detail: { processId: processId } }));
+    } catch (_) { /* presentation-only */ }
+  }
+
   function register(processId, config) {
     registrations[processId] = Object.assign({
       allowlist: [],
@@ -58,6 +67,7 @@
     }, config || {});
     registrationOrderCounter += 1;
     registrations[processId]._order = registrationOrderCounter;
+    announceChange(processId);
   }
 
   function query(processId) {
@@ -142,6 +152,7 @@
     if (window.TradeJournalAIFieldFillBus) {
       try { window.TradeJournalAIFieldFillBus.emit(processId, path, { value: value, mode: mode }); } catch (_) { /* presentation-only, must never break the real write above */ }
     }
+    announceChange(processId);
     return true;
   }
 

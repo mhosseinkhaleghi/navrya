@@ -38,6 +38,7 @@ A process registration (`registry.register(processId, config)`) may declare `int
 - **`role: 'gate'`** - a final action confirmation/start signal (e.g. `save`, `seal`,
   `setupComplete`). Deliberately exempt from the allowlist check - a gate is never written to a
   real form control, only ever consulted by the action's own `submit()`.
+- **`ask: false`** - the field is listed (progress, the voice sidecar's checklist) but never interviewed: a date the app fills itself, an optional tuning field. `sendChat()`'s `nextQuestion` skips it. `session-create` uses it so the required trio (city, timeframe, instrument) is what is asked and the session is still created as soon as they are known.
 - **`visibleWhen`** - a live closure over the same render's own state the registration itself
   closes over (e.g. `() => man.kind === 'personal'`), so a discriminator change (Account kind
   Prop/Personal) is reflected on the very next read, never a one-time snapshot.
@@ -62,6 +63,10 @@ mechanism (`docs/ai/voice-ui-synchronization.md`'s "Forward-looking step synchro
 moves the real wizard step there before the question is ever shown/spoken. The model still
 produces the natural-language wording; the ORDER and FIELD IDENTITY are decided deterministically,
 client-side, from the same field definitions the human UI itself renders - never an LLM guess.
+
+## Skipping and the voice bar
+
+`TradeJournalChatDockCore.skipInterviewField(processId, path)` records a field the user chose to skip for the ONE process being interviewed (forgotten when another process becomes active or the conversation resets); `sendChat()` never offers a skipped field as `nextQuestion` again. `navrya-src/dockFormVoice.js` builds the view-model behind the ChatDock's voice bar, sidecar and peek choices from `visibleInterviewFields()` + the workflow's `known` + the pending confirmation - the same "first unanswered field" `nextQuestion` uses. `navrya-src/dockFieldStates.js` paints asking / hearing / filled / waiting-for-OK on the real fields by their rendered label (an overlay only: it never reads or writes a value, and draws nothing when a label cannot be matched to exactly one field). See ARCHITECTURE.md 7.14.
 
 ## Field-write confirmation preference
 

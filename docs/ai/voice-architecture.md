@@ -877,6 +877,7 @@ they interact:
    other `error` still fails the session. Unprompted/system-initiated speech with no `turnId` at
    all (the Companion opening, an AI-analysis narration) is sent with `delegation_id:null`
    directly.
+3b. **Calm delivery for psychology forms.** While a form with `CALM_PROCESS` (`mh-*`, `psychology-*`, `trade-emotion-log`) is being filled by voice, `chatDockView.jsx` calls the transport's optional `setCalm(true)`; `gptLiveVoice.js` appends a trusted instruction (`session.instructions.append`, `delegation_id:null`) to speak slowly and never hurry the user, and reverts it the same way. No speed control is documented for this transport, so this is the documented channel, best-effort; other transports keep their pace.
 4. **Interrupted audio could resume on the next reply.** GPT-Live's own "Stop speaking immediately"
    instruction is best-effort only (no confirmed client-cancel event exists), so audio for an
    interrupted reply can still be arriving on the same continuous WebRTC track when the next

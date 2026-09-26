@@ -172,6 +172,9 @@ const COMMENTARY_MAX_CHARS = 1000;
 // (session.closed, carrying the real usage.seconds) before giving up and tearing down anyway with
 // a locally-estimated duration instead - never blocks Voice-end indefinitely on a slow/lost event.
 const GRACEFUL_CLOSE_TIMEOUT_MS = 4000;
+// The calm delivery instruction pair (see setCalm() in createGptLiveSession).
+const CALM_INSTRUCTION_ON = 'From now on speak slowly, softly and warmly, with longer pauses between sentences, and never hurry the user for an answer. Keep speaking exactly the sentences you are given.';
+const CALM_INSTRUCTION_OFF = 'Return to your normal speaking pace and tone. Keep speaking exactly the sentences you are given.';
 
 function errorCode(error) {
   return error && (error.code || (error.name && error.name !== 'Error' ? error.name : '') || error.message) || 'GPT_LIVE_FAILED';
@@ -447,6 +450,8 @@ export function createGptLiveSession(options) {
     // phase the one active speak() call (if any) was in - PlaybackController only ever has one
     // entry in flight at a time, so these are always empty in ordinary operation by this point;
     // cleared here defensively so nothing from this connection can leak into the next one.
+    calmWanted = false;
+    calmApplied = false;
     delegationByTurnId.clear();
     unpairedFlushedTurnIds.length = 0;
     pendingUnclaimedDelegationIds.length = 0;
@@ -508,6 +513,22 @@ export function createGptLiveSession(options) {
   // protection and is called directly by callers that do not expect it to throw). Converted into
   // the same honest `false` this function already returns for "not connected", matching the
   // try/catch convention every other real-world-failure-prone call in this file already uses.
+  // Calm delivery (ChatDock design plate XVIII): while a psychology form is being filled the voice slows
+  // down and never hurries the user. There is no documented client-side speed control for this
+  // transport, so it is what the transport does document - a trusted instruction appended to the live
+  // session (session.instructions.append, delegation_id:null, the same channel interrupt() uses) - and
+  // reverted the same way. Best-effort: the wanted state is remembered and applied as soon as the data
+  // channel is open, never resent while unchanged.
+  let calmWanted = false;
+  let calmApplied = false;
+  function setCalm(next) {
+    calmWanted = !!next;
+    if (calmWanted === calmApplied) return true;
+    const ok = send({ type: 'session.instructions.append', delegation_id: null, content: calmWanted ? CALM_INSTRUCTION_ON : CALM_INSTRUCTION_OFF });
+    if (ok) calmApplied = calmWanted;
+    return ok;
+  }
+
   function send(message) {
     if (!dc || dc.readyState !== 'open') return false;
     try {
@@ -1055,7 +1076,7 @@ export function createGptLiveSession(options) {
 
   return {
     connect, disconnect, mute, interrupt, speak, playAudioUrl, finishUserTurn, supportsManualFinish, markPlaybackEnded, supportsLiveCaption,
-    setLanguage: (value) => { language = value || 'en'; }, setEagerness: () => false,
+    setLanguage: (value) => { language = value || 'en'; }, setEagerness: () => false, setCalm,
     state: () => state, isMuted: () => muted, getMediaStream: () => mediaStream,
     // Provider Ownership addendum, section 1's own convention: reasoning already follows the real
     // active provider unchanged (chatDockView.jsx never overrides it), so this just reports the

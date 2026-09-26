@@ -185,11 +185,28 @@ export function NewSessionDialog({
   React.useEffect(() => {
     const registry = window.TradeJournalAIProcessRegistry;
     if (!registry) return undefined;
+    const calendarIsJalali = (typeof document !== 'undefined' && document.documentElement.lang) === 'fa';
     registry.register('session-create', {
       layer: 'foreground',
       allowlist: ['city', 'timeframe', 'gregorian', 'jalali', 'loop', 'grace', 'accountId', 'instrument'],
       isOpen: () => openRef.current && mountedRef.current,
       activeStep: () => 'form',
+      // The form's own questions, in its real display order (docs/ai/form-interview-contract.md): the
+      // ChatDock's voice bar shows "question N of M" and the field states from this. The three the
+      // action requires are ASKED; the optional ones (the calendar date the app fills itself, the update
+      // loop / grace, the account link) are listed for the progress and the checklist but never asked
+      // (`ask: false`) - the session is created as soon as the required trio is known, exactly as before.
+      interview: {
+        fields: [
+          { path: 'city', order: 10, label: t.tradingSession, type: 'choice', required: true, options: SESSION_CITIES.map((c) => ({ value: c, label: c })) },
+          { path: 'timeframe', order: 20, label: t.primaryTimeframe, type: 'choice', required: true, options: TIMEFRAMES.map((tf) => ({ value: tf, label: tf })) },
+          { path: 'instrument', order: 30, label: t.instrument, type: 'text', required: true },
+          { path: calendarIsJalali ? 'jalali' : 'gregorian', order: 40, label: calendarIsJalali ? t.jalaliDate : t.gregorianDate, type: 'date', ask: false },
+          { path: 'loop', order: 50, label: t.loopInterval, type: 'number', ask: false },
+          { path: 'grace', order: 60, label: t.graceMinutes, type: 'number', ask: false },
+          { path: 'accountId', order: 70, label: t.sessionAccount, type: 'choice', ask: false, visibleWhen: () => hasAccounts, options: (accountOptions || []).map((o) => ({ value: o.value, label: o.label })) }
+        ]
+      },
       applyValue: (path, value) => {
         if (path === 'city') setCity(String(value));
         else if (path === 'timeframe') setTimeframe(String(value));
@@ -211,7 +228,7 @@ export function NewSessionDialog({
         uploads: Object.entries(uploads).map(([slot, u]) => ({ timeframe: slot, file: u.file }))
       })
     });
-  }, [city, timeframe, gregorian, jalali, loop, grace, accountId, instrument, hasAccounts, accountOptions, uploads, runCreate]);
+  }, [city, timeframe, gregorian, jalali, loop, grace, accountId, instrument, hasAccounts, accountOptions, uploads, runCreate, t.tradingSession, t.primaryTimeframe, t.instrument, t.jalaliDate, t.gregorianDate, t.loopInterval, t.graceMinutes, t.sessionAccount]);
 
   function selectFile(slot, file) {
     setUploads((prev) => {
